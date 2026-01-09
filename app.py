@@ -5,6 +5,7 @@ import json
 import tempfile
 import os
 import re
+import io
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
@@ -262,7 +263,41 @@ if not st.session_state.messages:
     )
 
 # ================== USER INPUT ==================
-user_input = st.text_input("You:")
+
+import io
+
+st.subheader("🎙️ Speak (optional)")
+
+audio_value = st.audio_input("Record a voice message")
+
+# If the user recorded audio, transcribe it and use it as the user_input
+transcribed_text = ""
+if audio_value is not None:
+    audio_bytes = audio_value.getvalue()
+    # Streamlit returns audio bytes (wav/webm depending on browser)
+    # Wrap bytes in a file-like object for the OpenAI transcription API
+    audio_file = io.BytesIO(audio_bytes)
+    audio_file.name = "speech.wav"  # give it a filename
+
+    try:
+        tr = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            prompt="Transcribe exactly as spoken. Do not translate.",
+            response_format="text",
+        )
+        transcribed_text = tr if isinstance(tr, str) else getattr(tr, "text", "")
+        transcribed_text = (transcribed_text or "").strip()
+        if transcribed_text:
+            st.info(f"Transcribed: {transcribed_text}")
+    except Exception as e:
+        st.warning(f"Audio transcription failed: {e}")
+
+# user_input = st.text_input("You:")
+
+typed_input = st.text_input("You:")
+user_input = transcribed_text if transcribed_text else typed_input
+
 
 if user_input and user_input != st.session_state.last_user_input:
     st.session_state.last_user_input = user_input
