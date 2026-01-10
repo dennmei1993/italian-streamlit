@@ -9,30 +9,25 @@ import io
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
-import tempfile
-import os
 
 def speak_italian(text: str) -> str:
-    """
-    Generate Italian TTS for a given sentence.
-    Returns path to audio file.
-    """
-    if not text.strip():
+    if not text or not text.strip():
         return ""
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     tmp.close()
+    audio_path = tmp.name
 
-    with open(tmp.name, "wb") as f:
-        audio = client.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=text,
-            language="it"
-        )
-        f.write(audio.read())
+    speech = client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice="alloy",
+        input=text.strip()
+    )
 
-    return tmp.name
+    with open(audio_path, "wb") as f:
+        f.write(speech.read())
+
+    return audio_path
 
 
 def looks_non_italian_or_garbled(text: str) -> bool:
