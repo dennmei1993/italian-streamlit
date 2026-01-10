@@ -9,6 +9,32 @@ import io
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
+import tempfile
+import os
+
+def speak_italian(text: str) -> str:
+    """
+    Generate Italian TTS for a given sentence.
+    Returns path to audio file.
+    """
+    if not text.strip():
+        return ""
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp.close()
+
+    with open(tmp.name, "wb") as f:
+        audio = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=text,
+            language="it"
+        )
+        f.write(audio.read())
+
+    return tmp.name
+
+
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
     if not text:
@@ -512,6 +538,12 @@ if st.session_state.conversation:
     turn = st.session_state.conversation[-1]
 
     st.markdown(f"**You:** {turn['user']}")
+
+    if st.button("🔊 Listen (Italian pronunciation)", key=f"speak_user_{i}"):
+        user_audio = speak_italian(turn["user"])
+        if user_audio and os.path.exists(user_audio):
+            st.audio(user_audio)
+
     st.markdown(f"**AI (Partner):** {turn['partner']}")
 
     if turn["audio"] and os.path.exists(turn["audio"]):
