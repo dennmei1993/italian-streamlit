@@ -534,10 +534,10 @@ if st.session_state.conversation:
 
     st.markdown(f"**You:** {turn['user']}")
 
-    if st.button("🔊 Listen (Italian pronunciation)", key=f"speak_user_{i}"):
-        user_audio = speak_italian(turn["user"])
-        if user_audio and os.path.exists(user_audio):
-            st.audio(user_audio)
+    #if st.button("🔊 Listen (Italian pronunciation)", key=f"speak_user_{i}"):
+    user_audio = speak_italian(turn["user"])
+    if user_audio and os.path.exists(user_audio):
+        st.audio(user_audio)
 
     st.markdown(f"**AI (Partner):** {turn['partner']}")
 
