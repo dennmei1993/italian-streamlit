@@ -9,6 +9,29 @@ import io
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
+def looks_non_italian_or_garbled(text: str) -> bool:
+    """Heuristic: triggers repair when transcript seems off."""
+    if not text:
+        return True
+    t = text.strip().lower()
+
+    # Too short and not useful
+    if len(t) <= 1:
+        return True
+
+    # Contains lots of English function words (common dictation drift)
+    english_markers = {"i","you","we","they","want","need","with","and","the","a","to","for","is","are","please"}
+    tokens = re.findall(r"[a-z']+", t)
+    if tokens and sum(tok in english_markers for tok in tokens) >= 2:
+        return True
+
+    # If it has very few Italian-looking characters and lots of random symbols
+    if sum(ch.isalpha() for ch in t) < 3:
+        return True
+
+    return False
+
+
 # ================== SETUP ==================
 load_dotenv()
 client = OpenAI()
@@ -129,6 +152,7 @@ ROLE 1 — Conversation Partner
 - Respond naturally as if the meaning was understood
 - If the user makes a mistake, continue the conversation without correcting
 - Teaching and correction are STRICTLY forbidden for Partner
+- If the user’s message is unclear, ask a simple clarification question (Italian only), e.g. “Scusa, vuoi dire un caffè o un cappuccino?”
 
 CRITICAL RULE (NO TRANSLATION):
 
@@ -267,36 +291,79 @@ if not st.session_state.messages:
 import io
 
 st.subheader("🎙️ Speak (optional)")
-
 audio_value = st.audio_input("Record a voice message")
 
-# If the user recorded audio, transcribe it and use it as the user_input
 transcribed_text = ""
+final_audio_input = ""  # what we will actually send into your app flow (Mode A)
+
 if audio_value is not None:
     audio_bytes = audio_value.getvalue()
-    # Streamlit returns audio bytes (wav/webm depending on browser)
-    # Wrap bytes in a file-like object for the OpenAI transcription API
     audio_file = io.BytesIO(audio_bytes)
-    audio_file.name = "speech.wav"  # give it a filename
+    audio_file.name = "speech.wav"
 
     try:
+        # 1) Primary transcription (tolerant + no translation)
         tr = client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
-            prompt="Transcribe exactly as spoken. Do not translate.",
+            prompt=(
+                "Italian language. The speaker is a learner with imperfect pronunciation. "
+                "Transcribe exactly as spoken. If unsure, choose the closest Italian words "
+                "that fit a real-life conversation. Do not translate."
+            ),
             response_format="text",
+            temperature=0,
         )
-        transcribed_text = tr if isinstance(tr, str) else getattr(tr, "text", "")
-        transcribed_text = (transcribed_text or "").strip()
-        if transcribed_text:
-            st.info(f"Transcribed: {transcribed_text}")
+        transcribed_text = (tr if isinstance(tr, str) else getattr(tr, "text", "")).strip()
     except Exception as e:
         st.warning(f"Audio transcription failed: {e}")
+        transcribed_text = ""
 
-# user_input = st.text_input("You:")
+    # Default: use what we heard
+    final_audio_input = transcribed_text
+
+    # 2) Automatic repair fallback (Mode A)
+    if looks_non_italian_or_garbled(transcribed_text):
+        try:
+            vocab_hint = ""
+            try:
+                if "vocab" in globals() and isinstance(vocab, list) and vocab:
+                    vocab_hint = ", ".join(vocab[:120])
+            except Exception:
+                pass
+
+            repair_resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": (
+                        "You repair a noisy speech-to-text transcript from an Italian learner. "
+                        "Return ONLY the most likely intended Italian sentence. "
+                        "Keep it short and practical for the scenario. "
+                        "Do NOT include explanations. Do NOT include English."
+                    )},
+                    {"role": "user", "content": (
+                        f"Scenario: {scenario}\n"
+                        f"Noisy transcript: {transcribed_text}\n"
+                        f"Allowed/simple vocab (optional): {vocab_hint}\n"
+                        "Output ONLY the repaired Italian sentence."
+                    )},
+                ],
+            )
+            repaired = repair_resp.choices[0].message.content.strip()
+            if repaired:
+                final_audio_input = repaired
+        except Exception:
+            final_audio_input = transcribed_text
+
+    # Optional debug while testing
+    if transcribed_text:
+        st.caption(f"🎧 Heard: {transcribed_text}")
+    if final_audio_input and final_audio_input != transcribed_text:
+        st.caption(f"🛠️ Interpreted as: {final_audio_input}")
 
 typed_input = st.text_input("You:")
-user_input = transcribed_text if transcribed_text else typed_input
+user_input = final_audio_input.strip() if final_audio_input.strip() else typed_input.strip()
 
 
 if user_input and user_input != st.session_state.last_user_input:
