@@ -504,15 +504,20 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY ==================
-for i, turn in enumerate(st.session_state.conversation):
+# ================== DISPLAY (LATEST ONLY) ==================
+st.subheader("Latest turn")
+
+if st.session_state.conversation:
+    i = len(st.session_state.conversation) - 1
+    turn = st.session_state.conversation[-1]
+
     st.markdown(f"**You:** {turn['user']}")
     st.markdown(f"**AI (Partner):** {turn['partner']}")
 
     if turn["audio"] and os.path.exists(turn["audio"]):
         st.audio(turn["audio"])
 
-    if st.button("Show English", key=f"translate_{i}"):
+    if st.button("Show English", key="translate_latest"):
         if turn["translation"] is None:
             turn["translation"] = translate_to_english(turn["partner"])
 
@@ -522,6 +527,9 @@ for i, turn in enumerate(st.session_state.conversation):
     if turn["tutor"]:
         st.markdown("**Tutor:**")
         st.markdown(turn["tutor"])
+else:
+    st.write("Say something to start.")
+
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
