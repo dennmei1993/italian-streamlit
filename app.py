@@ -610,20 +610,24 @@ if background_path:
                 overflow: hidden;
             }}
             .overlay-box {{
-                background: rgba(255,255,255,0.92);
+                background: rgba(255,255,255,0.88);
                 border-radius: 14px;
                 padding: 14px;
                 max-width: 980px;
-            }}
-
+                }}
+                
             .avatar-float {{
                 position: absolute;
-                left: 18px;
-                bottom: 18px;
-                width: 160px;
+                left: 50%;
+                top: 55%;
+                transform: translate(-50%, -50%);
+                width: min(70vw, 520px);   /* ~2/3 screen width on mobile, capped on desktop */
+                height: auto;
                 border-radius: 18px;
                 box-shadow: 0 10px 25px rgba(0,0,0,0.35);
-                border: 2px solid rgba(255,255,255,0.5);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+                border: none;               /* <-- add this or just remove the border line */
+                background: transparent;    /* <-- ensures no “card” background */
             }}
 
             </style>
