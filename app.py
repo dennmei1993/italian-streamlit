@@ -594,7 +594,7 @@ st.markdown(
       top: 0;
       left: 0;
       right: 0;
-      height: 60vh;
+      height: 70vh;
       background-image:
         linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.55)),
         {stage_bg};
@@ -646,10 +646,10 @@ st.markdown(
     /* ================= BOTTOM HALF: INTERACTION ================= */
     .bottom-panel {{
       position: fixed;
-      top: 60vh;
+      top: 70vh;
       left: 0;
       right: 0;
-      height: 40vh;
+      height: 30vh;
       background: rgba(255,255,255,0.97);
       border-top: 1px solid rgba(0,0,0,0.08);
       z-index: 40;
