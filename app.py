@@ -627,9 +627,14 @@ if background_path:
             }}
 
             </style>
-            <div class='scenario-wrap'><div class='overlay-box'>
+            <div class="scenario-wrap">
+                {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
+                <div class="overlay-box">
             """,
             unsafe_allow_html=True
+
+            st.markdown("</div></div>", unsafe_allow_html=True)
+
         )
     except Exception:
         # If image missing/bad, just skip the background UI
@@ -640,10 +645,7 @@ st.subheader('Latest turn')
 if st.session_state.conversation:
     turn = st.session_state.conversation[-1]
 
-    colA, colB = st.columns([1, 3], vertical_alignment='top')
-    with colA:
-        if avatar_path and os.path.exists(avatar_path):
-            st.image(avatar_path, use_container_width=True)
+    colB = st.columns([1, 3], vertical_alignment='top')
 
     with colB:
         st.markdown(f"**You:** {turn['user']}")
