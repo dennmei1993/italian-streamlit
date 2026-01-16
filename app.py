@@ -667,10 +667,10 @@ st.markdown(
       pointer-events: none;
     }}
 
-    .stApp {
+    .stApp {{
       margin: 0;
       padding: 0;
-    }
+    }}
     </style>
 
     <div class='stage'>
