@@ -550,7 +550,7 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY (FULL-SCREEN STAGE UI) ==================
+# ================== DISPLAY (SPLIT STAGE + INTERACTION PANEL) ==================
 
 # Build stage visuals (UI only)
 bg_b64 = None
@@ -567,7 +567,9 @@ if avatar_path:
     except Exception:
         avatar_uri = None
 
-# Full-screen, non-scrolling stage. Widgets remain functional; only layout changes.
+stage_bg = f"url('data:image/jpg;base64,{bg_b64}')" if bg_b64 else "none"
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
+
 st.markdown(
     f"""
     <style>
@@ -575,74 +577,134 @@ st.markdown(
       height: 100%;
       overflow: hidden;
     }}
-    /* Hide Streamlit chrome */
-    header[data-testid='stHeader'] {{ display: none; }}
+
+    header[data-testid="stHeader"] {{ display: none; }}
     footer {{ display: none; }}
-    /* Make the app itself the stage */
-    .stApp {{
-      height: 100vh;
-      overflow: hidden;
-      background-image: {"url('data:image/jpg;base64," + bg_b64 + "')" if bg_b64 else 'none'};
+
+    /* Remove Streamlit padding */
+    section.main > div.block-container {{
+      padding: 0 !important;
+      margin: 0 !important;
+      max-width: 100% !important;
+    }}
+
+    /* ================= TOP HALF: STAGE ================= */
+    .stage {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50vh;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.55)),
+        {stage_bg};
       background-size: cover;
       background-position: center;
-      background-attachment: fixed;
+      overflow: hidden;
+      z-index: 10;
     }}
-    /* Top bar background */
-    .topbar-bg {{
-      position: fixed;
+
+    /* Scenario selector bar */
+    .stage-topbar {{
+      position: absolute;
       top: 0;
       left: 0;
       right: 0;
       height: 78px;
       background: rgba(255,255,255,0.92);
       backdrop-filter: blur(6px);
-      z-index: 1000;
       border-bottom: 1px solid rgba(0,0,0,0.06);
+      z-index: 30;
     }}
-    /* Pin the scenario selectbox into the top bar */
-    div[data-testid='stSelectbox'] {{
+
+    /* Pin Streamlit selectbox into the top bar */
+    div[data-testid="stSelectbox"] {{
       position: fixed;
       top: 12px;
       left: 12px;
       right: 12px;
-      z-index: 1001;
+      z-index: 31;
       margin: 0;
     }}
-    /* Foreground conversation panel */
-    section.main > div.block-container {{
-      position: fixed;
-      left: 50%;
-      bottom: 16px;
-      transform: translateX(-50%);
-      width: min(940px, 94vw);
-      max-height: 46vh;
-      overflow-y: auto;
-      padding: 14px 16px 12px 16px;
-      background: rgba(255,255,255,0.90);
-      border-radius: 16px;
-      box-shadow: 0 18px 40px rgba(0,0,0,0.25);
-    }}
-    /* Avatar layer inside the stage */
+
+    /* Avatar */
     .avatar-float {{
-      position: fixed;
+      position: absolute;
       left: 50%;
-      top: 55%;
+      top: 58%;
       transform: translate(-50%, -50%);
-      width: min(70vw, 520px);
+      width: min(60vw, 420px);
       height: auto;
       border: none;
       background: transparent;
       border-radius: 24px;
       box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-      z-index: 900;
+      z-index: 20;
       pointer-events: none;
     }}
+
+    /* ================= BOTTOM HALF: INTERACTION ================= */
+    .bottom-panel {{
+      position: fixed;
+      top: 50vh;
+      left: 0;
+      right: 0;
+      height: 50vh;
+      background: rgba(255,255,255,0.97);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 40;
+      padding: 14px;
+      overflow: hidden;
+    }}
+
+    .bottom-panel-inner {{
+      height: calc(50vh - 28px);
+      overflow-y: auto;
+      padding-right: 6px;
+    }}
     </style>
-    <div class='topbar-bg'></div>
-    {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
+
+    <div class="stage">
+      <div class="stage-topbar"></div>
+      {avatar_html}
+    </div>
+
+    <div class="bottom-panel">
+      <div class="bottom-panel-inner">
     """,
     unsafe_allow_html=True,
 )
+
+# ================== INTERACTION CONTENT ==================
+
+st.subheader("Latest turn")
+
+if st.session_state.conversation:
+    turn = st.session_state.conversation[-1]
+
+    st.markdown(f"**You:** {turn['user']}")
+    st.markdown(f"**AI (Partner):** {turn['partner']}")
+
+    if turn.get("audio") and os.path.exists(turn["audio"]):
+        st.audio(turn["audio"])
+
+    if st.button("Show English", key="translate_latest"):
+        if turn.get("translation") is None:
+            turn["translation"] = translate_to_english(turn["partner"])
+
+    if turn.get("translation"):
+        st.markdown(f"🟦 *English:* {turn['translation']}")
+
+    if turn.get("tutor"):
+        st.markdown("**Tutor:**")
+        st.markdown(turn["tutor"])
+
+else:
+    st.write("Tap record and speak to start.")
+
+# Close bottom panel
+st.markdown("</div></div>", unsafe_allow_html=True)
+
 
 st.subheader('Latest turn')
 if st.session_state.conversation:
