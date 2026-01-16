@@ -648,7 +648,7 @@ st.subheader('Latest turn')
 if st.session_state.conversation:
     turn = st.session_state.conversation[-1]
 
-    colB = st.columns([1, 3], vertical_alignment='top')
+    colA, colB = st.columns([1, 3], vertical_alignment='top')
 
     with colB:
         st.markdown(f"**You:** {turn['user']}")
