@@ -60,6 +60,20 @@ def img_to_base64(path: str) -> str:
     with open(path, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
 
+import mimetypes
+
+def img_file_to_data_uri(path: str) -> str:
+    """
+    Convert an image file to a data URI usable in HTML <img src="...">
+    """
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = "image/png"  # safe default
+
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
+
+
 # ================== USER PRONUNCIATION (UI only) ==================
 def speak_italian(text: str) -> str | None:
     """Generate Italian TTS for the given sentence and return a temp mp3 path."""
