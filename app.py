@@ -66,7 +66,6 @@ def resolve_asset(path: str) -> str | None:
 
     return None
 
-
 st.title("Italian Conversation Practice 🇮🇹")
 st.write("Partner speaks Italian. Tutor helps when needed.")
 
