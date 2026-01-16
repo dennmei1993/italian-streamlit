@@ -6,6 +6,8 @@ import tempfile
 import os
 import re
 import io
+import base64
+import mimetypes
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
@@ -46,6 +48,18 @@ def resolve_asset(path: str) -> str | None:
     """
     if not path:
         return None
+
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = 'image/png'
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
 
     if os.path.exists(path):
         return path
@@ -332,7 +346,6 @@ if not st.session_state.messages:
 
 # ================== USER INPUT ==================
 
-import io
 
 st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
@@ -573,6 +586,8 @@ st.markdown(
     <style>
     html, body {{
       height: 100%;
+      margin: 0;
+      padding: 0;
       overflow: hidden;
     }}
     header[data-testid='stHeader'] {{ display: none; }}
@@ -651,6 +666,11 @@ st.markdown(
       z-index: 20;
       pointer-events: none;
     }}
+
+    .stApp {
+      margin: 0;
+      padding: 0;
+    }
     </style>
 
     <div class='stage'>
