@@ -7,6 +7,8 @@ import os
 import re
 import io
 
+import base64
+import mimetypes
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
 def looks_non_italian_or_garbled(text: str) -> bool:
@@ -36,6 +38,36 @@ def looks_non_italian_or_garbled(text: str) -> bool:
 load_dotenv()
 client = OpenAI()
 
+# ================== IMAGE HELPERS (UI only) ==================
+def resolve_asset(path: str) -> str | None:
+    if not path:
+        return None
+    if os.path.exists(path):
+        return path
+    base, ext = os.path.splitext(path)
+    ext = ext.lower()
+    if ext == '.png':
+        for e in ('.jpg', '.jpeg'):
+            cand = base + e
+            if os.path.exists(cand):
+                return cand
+    if ext in ('.jpg', '.jpeg'):
+        cand = base + '.png'
+        if os.path.exists(cand):
+            return cand
+    return None
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = 'image/png'
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
+
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
@@ -50,6 +82,20 @@ scenario = st.selectbox(
         "🚶 Asking directions"
     ]
 )
+
+# ================== SCENARIO VISUALS (UI only) ==================
+AVATARS = {
+    '☕ Ordering coffee / food': 'assets/avatars/barista.png',
+    '🚆 Buying tickets / transport': 'assets/avatars/ticket_clerk.png',
+    '🚶 Asking directions': 'assets/avatars/local_person.png',
+}
+BACKGROUNDS = {
+    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.jpg',
+    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.jpg',
+    '🚶 Asking directions': 'assets/backgrounds/directions.jpg',
+}
+avatar_path = resolve_asset(AVATARS.get(scenario, ''))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ''))
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
