@@ -51,6 +51,23 @@ scenario = st.selectbox(
     ]
 )
 
+# ================== SCENARIO VISUALS (UI only) ==================
+
+AVATARS = {
+    "☕ Ordering coffee / food": "assets/avatars/barista.png",
+    "🚆 Buying tickets / transport": "assets/avatars/ticket_clerk.png",
+    "🚶 Asking directions": "assets/avatars/local_person.png",
+}
+
+BACKGROUNDS = {
+    "☕ Ordering coffee / food": "assets/backgrounds/cafe.jpg",
+    "🚆 Buying tickets / transport": "assets/backgrounds/transport.jpg",
+    "🚶 Asking directions": "assets/backgrounds/directions.jpg",
+}
+
+avatar_path = resolve_asset(AVATARS.get(scenario, ""))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
+
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
     common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
