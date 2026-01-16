@@ -6,8 +6,6 @@ import tempfile
 import os
 import re
 import io
-import base64
-import mimetypes
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
@@ -48,18 +46,6 @@ def resolve_asset(path: str) -> str | None:
     """
     if not path:
         return None
-
-
-def img_to_base64(path: str) -> str:
-    with open(path, 'rb') as f:
-        return base64.b64encode(f.read()).decode('utf-8')
-
-def img_file_to_data_uri(path: str) -> str:
-    mime_type, _ = mimetypes.guess_type(path)
-    if not mime_type:
-        mime_type = 'image/png'
-    b64 = img_to_base64(path)
-    return f"data:{mime_type};base64,{b64}"
 
     if os.path.exists(path):
         return path
@@ -346,6 +332,7 @@ if not st.session_state.messages:
 
 # ================== USER INPUT ==================
 
+import io
 
 st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
@@ -564,14 +551,14 @@ if user_input and user_input != st.session_state.last_user_input:
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
 # --- UI-only: Stage visuals ---
-bg_b64 = None
+
+background_uri = None
 if background_path:
     try:
-        bg_b64 = img_to_base64(background_path)
+        background_uri = img_file_to_data_uri(background_path)
     except Exception:
-        bg_b64 = None
-
-avatar_uri = None
+        background_uri = None
+stage_bg = f"url('{background_uri}')" if background_uri else "none"
 if avatar_path:
     try:
         avatar_uri = img_file_to_data_uri(avatar_path)
@@ -586,8 +573,6 @@ st.markdown(
     <style>
     html, body {{
       height: 100%;
-      margin: 0;
-      padding: 0;
       overflow: hidden;
     }}
     header[data-testid='stHeader'] {{ display: none; }}
@@ -665,11 +650,6 @@ st.markdown(
       box-shadow: 0 12px 30px rgba(0,0,0,0.26);
       z-index: 20;
       pointer-events: none;
-    }}
-
-    .stApp {{
-      margin: 0;
-      padding: 0;
     }}
     </style>
 
