@@ -39,6 +39,34 @@ client = OpenAI()
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
+# ================== ASSET HELPERS (UI only) ==================
+def resolve_asset(path: str) -> str | None:
+    """
+    Resolve asset path and auto-fallback between .png / .jpg / .jpeg
+    """
+    if not path:
+        return None
+
+    if os.path.exists(path):
+        return path
+
+    base, ext = os.path.splitext(path)
+    ext = ext.lower()
+
+    if ext == ".png":
+        for e in (".jpg", ".jpeg"):
+            candidate = base + e
+            if os.path.exists(candidate):
+                return candidate
+
+    if ext in (".jpg", ".jpeg"):
+        candidate = base + ".png"
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
 st.title("Italian Conversation Practice 🇮🇹")
 st.write("Partner speaks Italian. Tutor helps when needed.")
 
