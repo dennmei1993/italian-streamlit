@@ -558,14 +558,16 @@ if background_path:
         background_uri = img_file_to_data_uri(background_path)
     except Exception:
         background_uri = None
+
 stage_bg = f"url('{background_uri}')" if background_uri else "none"
+
 if avatar_path:
     try:
         avatar_uri = img_file_to_data_uri(avatar_path)
     except Exception:
         avatar_uri = None
 
-stage_bg = f"url('data:image/jpg;base64,{bg_b64}')" if bg_b64 else "none"
+
 avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
 
 st.markdown(
