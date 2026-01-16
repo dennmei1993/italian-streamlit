@@ -80,8 +80,6 @@ BACKGROUNDS = {
     "🚶 Asking directions": "assets/backgrounds/directions.jpg",
 }
 
-avatar_path = resolve_asset(AVATARS.get(scenario, ""))
-background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
 st.title("Italian Conversation Practice 🇮🇹")
 st.write("Partner speaks Italian. Tutor helps when needed.")
 
@@ -94,7 +92,8 @@ scenario = st.selectbox(
     ]
 )
 
-
+avatar_path = resolve_asset(AVATARS.get(scenario, ""))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
