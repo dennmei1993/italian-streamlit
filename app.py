@@ -1,3 +1,4 @@
+from turtle import position
 import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -590,6 +591,11 @@ if user_input and user_input != st.session_state.last_user_input:
 if background_path:
     try:
         img_b64 = img_to_base64(background_path)
+
+        avatar_uri = None
+        if avatar_path:
+            avatar_uri = img_file_to_data_uri(avatar_path)
+
         st.markdown(
             f"""
             <style>
@@ -610,6 +616,17 @@ if background_path:
                 padding: 14px;
                 max-width: 980px;
             }}
+
+            .avatar-float {{
+                position: absolute;
+                left: 18px;
+                bottom: 18px;
+                width: 160px;
+                border-radius: 18px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+                border: 2px solid rgba(255,255,255,0.5);
+            }}
+
             </style>
             <div class='scenario-wrap'><div class='overlay-box'>
             """,
