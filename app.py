@@ -632,10 +632,9 @@ if background_path:
                 <div class="overlay-box">
             """,
             unsafe_allow_html=True
-
-            st.markdown("</div></div>", unsafe_allow_html=True)
-
         )
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
     except Exception:
         # If image missing/bad, just skip the background UI
         pass
