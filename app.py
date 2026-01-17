@@ -552,22 +552,25 @@ if user_input and user_input != st.session_state.last_user_input:
 
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
-# Build stage visuals (UI only) — keep the same working base64 approach
-bg_b64 = None
+# --- Stage visuals (UI only): use the same working local asset rendering ---
+bg_uri = None
 if background_path:
     try:
         bg_b64 = img_to_base64(background_path)
+        bg_uri = f"url('data:image/jpeg;base64,{bg_b64}')"
     except Exception:
-        bg_b64 = None
+        bg_uri = None
 
 avatar_uri = None
 if avatar_path:
     try:
+        # Keep avatar as data URI (png/jpg) as before
         avatar_uri = img_file_to_data_uri(avatar_path)
     except Exception:
         avatar_uri = None
 
-# Render a fixed Stage (top 60%) and a fixed Interaction Panel (bottom 40%).
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
+
 st.markdown(
     f"""
     <style>
@@ -580,34 +583,21 @@ st.markdown(
     header[data-testid='stHeader'] {{ display: none; }}
     footer {{ display: none; }}
 
-    /* Remove Streamlit default page background (we draw our own stage) */
-    .stApp {{
-      background: transparent !important;
-    }}
-
-    /* Stage area: top 60% */
+    /* Stage: fixed top 60% */
     .stage {{
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       height: 60vh;
-      background-image: {{"url('data:image/jpg;base64," + bg_b64 + "')" if bg_b64 else 'none'}};
+      background-image: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55)), {bg_uri or 'none'};
       background-size: cover;
       background-position: center;
       overflow: hidden;
       z-index: 10;
     }}
-    .stage::after {{
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
-      z-index: 11;
-      pointer-events: none;
-    }}
 
-    /* Scenario bar background (inside stage) */
+    /* Scenario bar background inside stage */
     .topbar-bg {{
       position: absolute;
       top: 0;
@@ -620,8 +610,8 @@ st.markdown(
       z-index: 30;
     }}
 
-    /* Pin the scenario selectbox into the top bar */
-    div[data-testid='stSelectbox'] {{
+    /* Pin the scenario selectbox into the stage bar */
+    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
       position: fixed !important;
       top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
       left: 12px !important;
@@ -629,15 +619,15 @@ st.markdown(
       z-index: 5000 !important;
       margin: 0 !important;
     }}
-    div[data-testid='stSelectbox'] label {{
+    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {{
       display: none !important;
     }}
 
-    /* Avatar in stage */
+    /* Avatar: centered in stage */
     .avatar-float {{
       position: fixed;
       left: 50%;
-      top: 32vh; /* centered within the 60vh stage */
+      top: 30vh;
       transform: translate(-50%, -50%);
       width: min(70vw, 520px);
       height: auto;
@@ -649,8 +639,8 @@ st.markdown(
       pointer-events: none;
     }}
 
-    /* Interaction panel: bottom 40% (internally scrollable) */
-    section.main > div.block-container {{
+    /* Interaction panel: fixed bottom 40%, internally scrollable */
+    section.main > div.block-container, div.block-container {{
       position: fixed;
       top: 60vh;
       left: 0;
@@ -663,17 +653,12 @@ st.markdown(
       z-index: 100;
       max-width: 100% !important;
     }}
-
-    /* Reduce top spacing in the panel */
-    section.main > div.block-container .element-container:first-child {{
-      margin-top: 0 !important;
-    }}
     </style>
 
     <div class='stage'>
       <div class='topbar-bg'></div>
     </div>
-    {{"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}}
+    {avatar_html}
     """,
     unsafe_allow_html=True,
 )
