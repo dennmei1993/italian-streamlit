@@ -686,7 +686,7 @@ st.markdown(
       top: 58%;
       transform: translate(-50%, -50%);
       width: min(70vw, 520px);
-      height: auto;
+      height: 70%;
       border: none;
       background: transparent;
       border-radius: 24px;
