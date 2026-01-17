@@ -60,8 +60,8 @@ client = OpenAI()
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-st.title("Italian Conversation Practice 🇮🇹")
-st.write("Partner speaks Italian. Tutor helps when needed.")
+# st.title("Italian Conversation Practice 🇮🇹")
+# st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
@@ -311,8 +311,8 @@ if not st.session_state.messages:
 
 import io
 
-st.subheader("🎙️ Speak (optional)")
-audio_value = st.audio_input("Record a voice message")
+# st.subheader("🎙️ Speak (optional)")
+# audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
 final_audio_input = ""  # what we will actually send into your app flow (Mode A)
@@ -526,7 +526,7 @@ if user_input and user_input != st.session_state.last_user_input:
     })
 
 # ================== DISPLAY (LATEST ONLY) ==================
-st.subheader("Latest turn")
+# st.subheader("Latest turn")
 
 if st.session_state.conversation:
     i = len(st.session_state.conversation) - 1
