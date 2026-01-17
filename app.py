@@ -387,7 +387,7 @@ if not st.session_state.messages:
 
 import io
 
-st.subheader("🎙️ Speak (optional)")
+# st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
