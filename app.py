@@ -383,8 +383,8 @@ if audio_value is not None:
     if final_audio_input and final_audio_input != transcribed_text:
         st.caption(f"🛠️ Interpreted as: {final_audio_input}")
 
-typed_input = st.text_input("You:")
-user_input = final_audio_input.strip() if final_audio_input.strip() else typed_input.strip()
+# typed_input = st.text_input("You:")
+user_input = final_audio_input.strip() # if final_audio_input.strip() else typed_input.strip()
 
 
 if user_input and user_input != st.session_state.last_user_input:
