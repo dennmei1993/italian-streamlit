@@ -689,7 +689,7 @@ st.markdown(
         position: fixed;
         left: 0;
         right: 0;
-        top: 70vh;
+        top: 80vh;
         height: 40vh;
         max-width: 100% !important;
         margin: 0 !important;
