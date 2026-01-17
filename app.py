@@ -470,9 +470,8 @@ if user_input and user_input != st.session_state.last_user_input:
     st.session_state.stage = update_stage(user_input)
     tutor_active = tutor_should_respond(user_input)
 
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+    filtered_input = user_input.strip()  # or your filtering function
+    st.session_state.messages.append({"role": "user", "content": filtered_input})
 
     st.session_state.messages.append(
         {"role": "system", "content": f"Tutor active: {tutor_active}"}
