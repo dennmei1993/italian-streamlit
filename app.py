@@ -43,18 +43,68 @@ def resolve_asset(rel_path: str) -> str | None:
 
 # Map scenario -> background/avatar. Adjust filenames if yours differ.
 STAGE_BACKGROUNDS = {
-    "☕ Ordering coffee / food": "assets/backgrounds/cafe.jpg",
-    "🚆 Buying tickets / transport": "assets/backgrounds/transport.jpg",
-    "🚶 Asking directions": "assets/backgrounds/directions.jpg",
+    "☕ Ordering coffee / food": [
+        "assets/backgrounds/cafe.jpg",
+        "assets/backgrounds/cafe.jpeg",
+        "assets/backgrounds/cafe.png",
+        "assets/cafe.jpg",
+        "cafe.jpg",
+    ],
+    "🚆 Buying tickets / transport": [
+        "assets/backgrounds/transport.jpg",
+        "assets/backgrounds/transport.jpeg",
+        "assets/backgrounds/transport.png",
+        "assets/transport.jpg",
+        "transport.jpg",
+    ],
+    "🚶 Asking directions": [
+        "assets/backgrounds/directions.jpg",
+        "assets/backgrounds/directions.jpeg",
+        "assets/backgrounds/directions.png",
+        "assets/directions.jpg",
+        "directions.jpg",
+    ],
 }
 STAGE_AVATARS = {
-    "☕ Ordering coffee / food": "assets/avatars/cafe.png",
-    "🚆 Buying tickets / transport": "assets/avatars/transport.png",
-    "🚶 Asking directions": "assets/avatars/directions.png",
+    "☕ Ordering coffee / food": [
+        "assets/avatars/cafe.png",
+        "assets/avatars/cafe.jpg",
+        "assets/avatars/barista.png",
+        "assets/avatars/avatar_cafe.png",
+        "assets/cafe.png",
+        "cafe.png",
+    ],
+    "🚆 Buying tickets / transport": [
+        "assets/avatars/transport.png",
+        "assets/avatars/transport.jpg",
+        "assets/avatars/avatar_transport.png",
+        "assets/transport.png",
+        "transport.png",
+    ],
+    "🚶 Asking directions": [
+        "assets/avatars/directions.png",
+        "assets/avatars/directions.jpg",
+        "assets/avatars/avatar_directions.png",
+        "assets/directions.png",
+        "directions.png",
+    ],
 }
 
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+
+
+def resolve_any(paths) -> str | None:
+    """Try multiple relative paths and return the first that exists."""
+    if not paths:
+        return None
+    if isinstance(paths, str):
+        paths = [paths]
+    for p in paths:
+        rp = resolve_asset(p)
+        if rp:
+            return rp
+    return None
 
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
@@ -554,8 +604,8 @@ if user_input and user_input != st.session_state.last_user_input:
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
 # --- Resolve stage assets based on selected scenario ---
-background_path = resolve_asset(STAGE_BACKGROUNDS.get(scenario, ""))
-avatar_path = resolve_asset(STAGE_AVATARS.get(scenario, ""))
+background_path = resolve_any(STAGE_BACKGROUNDS.get(scenario, ""))
+avatar_path = resolve_any(STAGE_AVATARS.get(scenario, ""))
 
 background_uri = img_file_to_data_uri(background_path) if background_path else None
 avatar_uri = img_file_to_data_uri(avatar_path) if avatar_path else None
@@ -581,7 +631,7 @@ st.markdown(
       position: fixed;
       top: 0;
       left: 0;
-      right: 0;
+      width: 100vw;
       height: 60vh;
       overflow: hidden;
       z-index: 10;
@@ -590,9 +640,10 @@ st.markdown(
     .stage-bg-img {{
       position: absolute;
       inset: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 60vh;
       object-fit: cover;
+      display: block;
       z-index: 10;
     }}
     .stage-overlay {{
