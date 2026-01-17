@@ -42,13 +42,34 @@ with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
 # ================== ASSET HELPERS (UI only) ==================
+# ================== IMAGE HELPERS (UI only) ==================
+from pathlib import Path  # safe re-import
+
+BASE_DIR = Path(__file__).resolve().parent
+
 def resolve_asset(path: str) -> str | None:
-    """
-    Resolve asset path and auto-fallback between .png / .jpg / .jpeg
-    """
+    """Resolve an asset path relative to this script, with .png/.jpg/.jpeg fallbacks."""
     if not path:
         return None
-
+    # if already absolute or relative, try as-is
+    cand = Path(path)
+    if not cand.is_absolute():
+        cand = BASE_DIR / cand
+    if cand.exists():
+        return str(cand)
+    base = cand.with_suffix('')
+    ext = cand.suffix.lower()
+    # fallbacks
+    if ext == '.png':
+        for e in ('.jpg', '.jpeg'):
+            c2 = base.with_suffix(e)
+            if c2.exists():
+                return str(c2)
+    elif ext in ('.jpg', '.jpeg'):
+        c2 = base.with_suffix('.png')
+        if c2.exists():
+            return str(c2)
+    return None
 
 def img_to_base64(path: str) -> str:
     with open(path, 'rb') as f:
@@ -60,25 +81,6 @@ def img_file_to_data_uri(path: str) -> str:
         mime_type = 'image/png'
     b64 = img_to_base64(path)
     return f"data:{mime_type};base64,{b64}"
-
-    if os.path.exists(path):
-        return path
-
-    base, ext = os.path.splitext(path)
-    ext = ext.lower()
-
-    if ext == ".png":
-        for e in (".jpg", ".jpeg"):
-            candidate = base + e
-            if os.path.exists(candidate):
-                return candidate
-
-    if ext in (".jpg", ".jpeg"):
-        candidate = base + ".png"
-        if os.path.exists(candidate):
-            return candidate
-
-    return None
 
 # ================== SCENARIO VISUALS (UI only) ==================
 
