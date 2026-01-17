@@ -561,6 +561,7 @@ if background_path:
 
 stage_bg = f"url('{background_uri}')" if background_uri else "none"
 
+avatar_uri = None
 if avatar_path:
     try:
         avatar_uri = img_file_to_data_uri(avatar_path)
@@ -591,7 +592,7 @@ st.markdown(
       padding: 14px 14px 18px 14px !important;
       background: rgba(255,255,255,0.97);
       border-top: 1px solid rgba(0,0,0,0.08);
-      z-index: 40;
+      z-index: 1000;
       max-width: 100% !important;
     }}
 
@@ -608,7 +609,7 @@ st.markdown(
       background-size: cover;
       background-position: center;
       overflow: hidden;
-      z-index: 10;
+      z-index: 2000;
     }}
 
     /* Scenario bar INSIDE the stage image */
@@ -630,7 +631,7 @@ st.markdown(
       top: 12px;
       left: 12px;
       right: 12px;
-      z-index: 31;
+      z-index: 2100;
       margin: 0;
     }}
     /* Hide the selectbox label to remove extra whitespace above */
