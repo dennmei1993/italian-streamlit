@@ -586,7 +586,7 @@ if user_input and user_input != st.session_state.last_user_input:
 
 ### ================== DISPLAY (SPLIT: STAGE 60% + PANEL 40%) ==================
 
-# Build data-URIs for the stage images (kept local so it works on Streamlit Cloud)
+# --- Stage visuals (data-URIs keep iPhone Safari happy) ---
 background_uri = None
 if background_path:
     try:
@@ -601,160 +601,148 @@ if avatar_path:
     except Exception:
         avatar_uri = None
 
-st.markdown(
-    f"""
-    <style>
-      /* --- Global --- */
-      html, body {{
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background: #0b0f16;
-        overflow-x: hidden;
-      }}
+stage_html = f"""
+<style>
+  :root {{
+    --vh: 1vh;
+    --stage-h: calc(var(--vh) * 60);
+    --panel-h: calc(var(--vh) * 40);
+  }}
 
-      /* Hide Streamlit header/footer chrome */
-      header[data-testid='stHeader'] {{ display: none; }}
-      footer {{ display: none; }}
+  html, body {{ height: 100%; overflow: hidden; }}
+  header[data-testid='stHeader'] {{ display: none; }}
+  footer {{ display: none; }}
 
-      /* Stage (top 60%) */
-      .stage {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 60vh;
-        /* Always keep stage behind the interaction panel/widgets */
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-        background: #0b0f16;
-      }}
+  /* Hide Streamlit share footer/badge (Cloud) */
+  .viewerBadge_container__1QSob, .viewerBadge_link__1S137, .styles_viewerBadge__1yB5Z {{ display: none !important; }}
+  #MainMenu {{ visibility: hidden; }}
 
-      /* Force all Streamlit widgets/content above the stage (Safari/iOS stacking quirks) */
-      section.main > div.block-container > div:not(.stage) {{
-        position: relative;
-        z-index: 50;
-      }}
-      @supports (height: 100svh) {{
-        .stage {{ height: 60svh; }}
-      }}
+  /* Bottom interaction panel = Streamlit block container */
+  section.main > div.block-container {{
+    position: fixed;
+    top: var(--stage-h);
+    left: 0;
+    right: 0;
+    height: var(--panel-h);
+    overflow-y: auto;
+    padding: 16px 14px 20px 14px !important;
+    max-width: 100% !important;
+    z-index: 200;
 
-      .stage-bg-img {{
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-        filter: saturate(1.05) contrast(1.02);
-        transform: translateZ(0);
-      }}
+    /* Make panel clearly ABOVE stage */
+    background: rgba(11, 15, 22, 0.98);
+    color: rgba(255,255,255,0.92);
+    border-top: 1px solid rgba(255,255,255,0.10);
+    -webkit-overflow-scrolling: touch;
+  }}
 
-      /* Dark gradient for readability */
-      .stage-shade {{
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.55));
-      }}
+  /* Stage container (fixed) */
+  .stage {{
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--stage-h);
+    overflow: hidden;
+    z-index: 50;
+    background: #0b0f16;
+  }}
 
-      /* Avatar overlay */
-      .stage-avatar {{
-        position: absolute;
-        left: 50%;
-        top: 58%;
-        transform: translate(-50%, -50%);
-        width: min(72vw, 520px);
-        height: auto;
-        border: none;
-        background: transparent;
-        border-radius: 18px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-        pointer-events: none;
-      }}
+  .stage-bg-img {{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }}
 
-      /* Scenario selector sits inside the stage (top bar) */
-      div[data-testid='stSelectbox'] {{
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        right: 12px;
-        z-index: 30;
-        margin: 0 !important;
-      }}
-      div[data-testid='stSelectbox'] label {{ display: none; }}
+  .stage-overlay {{
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
+  }}
 
-      /* Interaction panel (bottom 40%) */
-      section.main > div.block-container {{
-        position: fixed;
-        left: 0;
-        right: 0;
-        top: 60vh;
-        height: 40vh;
-        max-width: 100% !important;
-        margin: 0 !important;
-        padding: 16px 14px 18px 14px !important;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        background: rgba(11,15,22,0.92);
-        border-top: 1px solid rgba(255,255,255,0.10);
-        z-index: 40;
-      }}
-      @supports (height: 100svh) {{
-        section.main > div.block-container {{
-          top: 60svh;
-          height: 40svh;
-        }}
-      }}
+  .avatar-img {{
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    transform: translate(-50%, -50%);
+    width: min(76vw, 540px);
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    pointer-events: none;
+    z-index: 80;
+  }}
 
-      /* Reduce extra whitespace Streamlit sometimes adds */
-      .block-container {{ padding-top: 0 !important; }}
-    </style>
+  /* Scenario selectbox pinned inside the stage */
+  div[data-testid='stSelectbox'] {{
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 12px;
+    right: 12px;
+    z-index: 300;
+    margin: 0 !important;
+  }}
+  div[data-testid='stSelectbox'] label {{ display: none; }}
 
-    <div class="stage">
-      {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
-      <div class="stage-shade"></div>
-      {f"<img class='stage-avatar' src='{avatar_uri}' />" if avatar_uri else ""}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+  /* Make inputs readable on dark panel */
+  .stTextInput input, .stTextArea textarea {{
+    color: rgba(255,255,255,0.95) !important;
+  }}
 
-# ---------- Panel content (inside the normal Streamlit layout) ----------
-#st.subheader('Latest turn')
+  /* Remove excess empty space at top of panel */
+  section.main > div.block-container > div:first-child {{ margin-top: 0 !important; padding-top: 0 !important; }}
+</style>
 
+<script>
+  const __setVh = () => {{
+    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+  }};
+  __setVh();
+  window.addEventListener('resize', __setVh);
+</script>
+
+<div class="stage">
+  {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
+  <div class="stage-overlay"></div>
+  {f"<img class='avatar-img' src='{avatar_uri}' />" if avatar_uri else ""}
+</div>
+"""
+
+st.markdown(stage_html, unsafe_allow_html=True)
+
+# --- Interaction content (in bottom panel) ---
 if st.session_state.conversation:
-    turn = st.session_state.conversation[-1]
+    for i, turn in enumerate(st.session_state.conversation):
+        st.markdown(f"**You:** {turn['user']}")
+        st.markdown(f"**AI (Partner):** {turn['partner']}")
 
-    st.markdown(f"**You:** {turn['user']}")
+        if turn.get('audio') and os.path.exists(turn['audio']):
+            st.audio(turn['audio'])
 
-    if st.button('🔊 Listen (Italian pronunciation)', key='speak_user_latest'):
-        user_audio = speak_italian(turn['user'])
-        if user_audio and os.path.exists(user_audio):
-            st.audio(user_audio)
+        if st.button("Show English", key=f"translate_{i}"):
+            if turn.get('translation') is None:
+                turn['translation'] = translate_to_english(turn['partner'])
 
-    st.markdown(f"**AI (Partner):** {turn['partner']}")
+        if turn.get('translation'):
+            st.markdown(f"🟦 *English:* {turn['translation']}")
 
-    if turn.get('audio') and os.path.exists(turn['audio']):
-        st.audio(turn['audio'])
-
-    if st.button('Show English', key='translate_latest'):
-        if turn.get('translation') is None:
-            turn['translation'] = translate_to_english(turn['partner'])
-
-    if turn.get('translation'):
-        st.markdown(f"🟦 *English:* {turn['translation']}")
-
-    if turn.get('tutor'):
-        st.markdown('**Tutor:**')
-        st.markdown(turn['tutor'])
+        if turn.get('tutor'):
+            st.markdown("**Tutor:**")
+            st.markdown(turn['tutor'])
 else:
-    st.write('Say something to start.')
+    st.markdown("Say something to start.")
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
-    for turn in st.session_state.conversation:
-        if turn["audio"] and os.path.exists(turn["audio"]):
-            os.remove(turn["audio"])
+    for turn in st.session_state.get('conversation', []):
+        ap = turn.get('audio')
+        if ap and os.path.exists(ap):
+            try:
+                os.remove(ap)
+            except Exception:
+                pass
     st.session_state.clear()
     st.stop()
