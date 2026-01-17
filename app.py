@@ -669,7 +669,7 @@ st.markdown(
     /* Pin the scenario selectbox into the top bar */
     div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
       position: fixed !important;
-      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+      top: calc(env(safe-area-inset-top, 0px) + 1px) !important;
       left: 12px !important;
       right: 12px !important;
       z-index: 6000 !important;
