@@ -454,7 +454,7 @@ st.markdown(
       /* Give the Streamlit content a little breathing room in the panel */
       #panel-root .stMarkdown, #panel-root .stTextInput, #panel-root .stAudioInput,
       #panel-root .stButton, #panel-root .stAudio {{
-        color: rgba(255,255,255,0.92);
+        color: rgba(255,255,255,0.2);
       }}
     </style>
 
