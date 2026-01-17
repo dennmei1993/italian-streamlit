@@ -7,6 +7,8 @@ import os
 import re
 import io
 
+import base64
+import mimetypes
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
 def looks_non_italian_or_garbled(text: str) -> bool:
@@ -36,11 +38,41 @@ def looks_non_italian_or_garbled(text: str) -> bool:
 load_dotenv()
 client = OpenAI()
 
+# ================== IMAGE HELPERS (UI only) ==================
+def resolve_asset(path: str) -> str | None:
+    if not path:
+        return None
+    if os.path.exists(path):
+        return path
+    base, ext = os.path.splitext(path)
+    ext = ext.lower()
+    if ext == '.png':
+        for e in ('.jpg', '.jpeg'):
+            cand = base + e
+            if os.path.exists(cand):
+                return cand
+    if ext in ('.jpg', '.jpeg'):
+        cand = base + '.png'
+        if os.path.exists(cand):
+            return cand
+    return None
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = 'image/png'
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
+
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-st.title("Italian Conversation Practice 🇮🇹")
-st.write("Partner speaks Italian. Tutor helps when needed.")
+# st.title("Italian Conversation Practice 🇮🇹")
+# st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
@@ -51,6 +83,20 @@ scenario = st.selectbox(
     ]
 )
 
+# ================== SCENARIO VISUALS (UI only) ==================
+AVATARS = {
+    '☕ Ordering coffee / food': 'assets/avatars/barista.png',
+    '🚆 Buying tickets / transport': 'assets/avatars/ticket_clerk.png',
+    '🚶 Asking directions': 'assets/avatars/local_person.png',
+}
+BACKGROUNDS = {
+    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.jpg',
+    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.jpg',
+    '🚶 Asking directions': 'assets/backgrounds/directions.jpg',
+}
+avatar_path = resolve_asset(AVATARS.get(scenario, ''))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ''))
+
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
     common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
@@ -60,7 +106,7 @@ def contains_english(text: str) -> bool:
 
 # ================== SESSION STATE ==================
 if "messages" not in st.session_state:
-    st.session_state.messages = []  # will be seeded after system_prompt
+    st.session_state.messages = []
 
 if "conversation" not in st.session_state:
     st.session_state.conversation = []
@@ -281,11 +327,6 @@ FINAL SELF-CHECK (SILENT)
 Rewrite silently if any rule is violated.
 """
 
-# ================== MESSAGES SEED (system prompt) ==================
-if "messages" not in st.session_state or not st.session_state.messages:
-    st.session_state.messages = [{"role": "system", "content": system_prompt}]
-
-
 if not st.session_state.messages:
     st.session_state.messages.append(
         {"role": "system", "content": system_prompt}
@@ -367,8 +408,8 @@ if audio_value is not None:
     if final_audio_input and final_audio_input != transcribed_text:
         st.caption(f"🛠️ Interpreted as: {final_audio_input}")
 
-typed_input = st.text_input("You:")
-user_input = final_audio_input.strip() if final_audio_input.strip() else typed_input.strip()
+# Voice-only input: typing disabled
+user_input = final_audio_input.strip()
 
 
 if user_input and user_input != st.session_state.last_user_input:
@@ -509,24 +550,117 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY ==================
-for i, turn in enumerate(st.session_state.conversation):
+# ================== DISPLAY (FULL-SCREEN STAGE UI) ==================
+
+# Build stage visuals (UI only)
+bg_b64 = None
+if background_path:
+    try:
+        bg_b64 = img_to_base64(background_path)
+    except Exception:
+        bg_b64 = None
+
+avatar_uri = None
+if avatar_path:
+    try:
+        avatar_uri = img_file_to_data_uri(avatar_path)
+    except Exception:
+        avatar_uri = None
+
+# Full-screen, non-scrolling stage. Widgets remain functional; only layout changes.
+st.markdown(
+    f"""
+    <style>
+    html, body {{
+      height: 100%;
+      overflow: hidden;
+    }}
+    /* Hide Streamlit chrome */
+    header[data-testid='stHeader'] {{ display: none; }}
+    footer {{ display: none; }}
+    /* Make the app itself the stage */
+    .stApp {{
+      height: 100vh;
+      overflow: hidden;
+      background-image: {"url('data:image/jpg;base64," + bg_b64 + "')" if bg_b64 else 'none'};
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+    }}
+    /* Top bar background */
+    .topbar-bg {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 78px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(6px);
+      z-index: 1000;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }}
+    /* Pin the scenario selectbox into the top bar */
+    div[data-testid='stSelectbox'] {{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1001;
+      margin: 0;
+    }}
+    /* Foreground conversation panel */
+    section.main > div.block-container {{
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      width: min(940px, 94vw);
+      max-height: 46vh;
+      overflow-y: auto;
+      padding: 14px 16px 12px 16px;
+      background: rgba(255,255,255,0.90);
+      border-radius: 16px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.25);
+    }}
+    /* Avatar layer inside the stage */
+    .avatar-float {{
+      position: fixed;
+      left: 50%;
+      top: 55%;
+      transform: translate(-50%, -50%);
+      width: min(70vw, 520px);
+      height: auto;
+      border: none;
+      background: transparent;
+      border-radius: 24px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+      z-index: 900;
+      pointer-events: none;
+    }}
+    </style>
+    <div class='topbar-bg'></div>
+    {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
+    """,
+    unsafe_allow_html=True,
+)
+
+st.subheader('Latest turn')
+if st.session_state.conversation:
+    turn = st.session_state.conversation[-1]
     st.markdown(f"**You:** {turn['user']}")
     st.markdown(f"**AI (Partner):** {turn['partner']}")
-
-    if turn["audio"] and os.path.exists(turn["audio"]):
-        st.audio(turn["audio"])
-
-    if st.button("Show English", key=f"translate_{i}"):
-        if turn["translation"] is None:
-            turn["translation"] = translate_to_english(turn["partner"])
-
-    if turn["translation"]:
+    if turn.get('audio') and os.path.exists(turn['audio']):
+        st.audio(turn['audio'])
+    if st.button('Show English', key='translate_latest'):
+        if turn.get('translation') is None:
+            turn['translation'] = translate_to_english(turn['partner'])
+    if turn.get('translation'):
         st.markdown(f"🟦 *English:* {turn['translation']}")
-
-    if turn["tutor"]:
-        st.markdown("**Tutor:**")
-        st.markdown(turn["tutor"])
+    if turn.get('tutor'):
+        st.markdown('**Tutor:**')
+        st.markdown(turn['tutor'])
+else:
+    st.write('Tap record and speak to start.')
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
