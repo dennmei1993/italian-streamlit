@@ -367,155 +367,6 @@ if not st.session_state.messages:
         {"role": "system", "content": system_prompt}
     )
 
-# ================== STAGE + PANEL LAYOUT (Option 1: JS wrap all widgets into panel) ==================
-# We render a fixed "Stage" (top 60%) with background + avatar, then a fixed "Panel" (bottom 40%)
-# and use small JS to move all subsequent Streamlit blocks into the panel.
-
-background_uri = None
-avatar_uri = None
-if background_path:
-    try:
-        background_uri = img_file_to_data_uri(background_path)
-    except Exception:
-        background_uri = None
-
-if avatar_path:
-    try:
-        avatar_uri = img_file_to_data_uri(avatar_path)
-    except Exception:
-        avatar_uri = None
-
-stage_bg_style = f"background-image: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55)), url('{background_uri}');" if background_uri else "background: #0b0f17;"
-avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar' />" if avatar_uri else ""
-
-
-# ================== DISPLAY (Stage 60% + Interaction Panel 40%) ==================
-
-# NOTE: We build a fixed Stage (top) and turn Streamlit's main block-container
-# into the fixed Interaction Panel (bottom). This avoids any JS relocation and
-# is the most reliable approach on iPhone/Safari.
-
-stage_html = """
-<style>
-:root {
-  /* iOS Safari can misreport vh; we set --vh via JS to window.innerHeight*0.01px */
-  --vh: 1vh;
-  --stage-h: calc(var(--vh) * 60);
-}
-
-html, body { height: 100%; overflow: hidden; }
-header[data-testid='stHeader'] { display: none; }
-footer { display: none; }
-
-/* The Streamlit main content becomes the Interaction Panel */
-section.main > div.block-container {
-  position: fixed;
-  top: var(--stage-h);
-  left: 0;
-  right: 0;
-  height: calc((var(--vh) * 100) - var(--stage-h));
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px 14px 18px 14px !important;
-  background: rgba(13, 17, 23, 0.92);
-  border-top: 1px solid rgba(255,255,255,0.10);
-  max-width: 100% !important;
-  z-index: 20;
-}
-
-/* Remove default top padding/margins that can create blank areas */
-section.main { padding-top: 0 !important; }
-
-/* Stage: fixed top area */
-#stage-root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--stage-h);
-  background-image:
-    linear-gradient(rgba(0,0,0,0.10), rgba(0,0,0,0.55)),
-    {{STAGE_BG_STYLE}};
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  overflow: hidden;
-  z-index: 10;
-}
-
-/* Scenario selector pinned INSIDE stage */
-div[data-testid='stSelectbox'] {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 50;
-}
-
-div[data-testid='stSelectbox'] label { display: none; }
-
-/* Avatar inside stage */
-.avatar-float {
-  position: absolute;
-  left: 50%;
-  top: 62%;
-  transform: translate(-50%, -50%);
-  width: min(72vw, 520px);
-  height: auto;
-  border: none;
-  background: transparent;
-  border-radius: 24px;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.26);
-  z-index: 20;
-  pointer-events: none;
-}
-
-/* Make widgets in the panel readable on dark background */
-section.main > div.block-container, section.main > div.block-container * {
-  color: #f1f1f1;
-}
-
-</style>
-
-<script>
-(function(){
-  function setVH(){
-    var vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', vh + 'px');
-  }
-  setVH();
-  window.addEventListener('resize', setVH);
-  window.addEventListener('orientationchange', setVH);
-})();
-</script>
-
-<script>
-(function(){
-  function setVH(){
-    var vh = (window.innerHeight || document.documentElement.clientHeight) * 0.01;
-    document.documentElement.style.setProperty('--vh', vh + 'px');
-  }
-  setVH();
-  window.addEventListener('resize', setVH);
-})();
-</script>
-
-<div id="stage-root">
-  {{AVATAR_HTML}}
-</div>
-"""
-
-
-# Inject avatar HTML into stage_html
-avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
-stage_html = stage_html.replace("{{AVATAR_HTML}}", avatar_html)
-
-# Inject background style
-stage_html = stage_html.replace("{{STAGE_BG_STYLE}}", stage_bg_style)
-
-st.markdown(stage_html, unsafe_allow_html=True)
-
-
 # ================== USER INPUT ==================
 
 import io
@@ -734,7 +585,222 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
+### ================== DISPLAY (SPLIT: STAGE 60% + PANEL 40%) ==================
+
+# Build data-URIs for the stage images (kept local so it works on Streamlit Cloud)
+background_uri = None
+if background_path:
+    try:
+        background_uri = img_file_to_data_uri(background_path)
+    except Exception:
+        background_uri = None
+
+avatar_uri = None
+if avatar_path:
+    try:
+        avatar_uri = img_file_to_data_uri(avatar_path)
+    except Exception:
+        avatar_uri = None
+
+# iOS Safari viewport height fix: use innerHeight so "60vh" doesn't drift when the URL bar shows/hides.
+components.html(
+    """
+    <script>
+(function(){
+  function qs(sel, root){ return (root||document).querySelector(sel); }
+
+  function relocate(){
+    const stage = document.getElementById('stage-root');
+    const panel = document.getElementById('panel-root');
+    if(!stage || !panel) return;
+
+    // Streamlit wraps each element in a container. We want the *Streamlit element container*
+    // that contains our stage markup, then move all subsequent Streamlit element containers
+    // into panel-root.
+    const shell = stage.closest('[data-testid="stElementContainer"], .element-container');
+    if(!shell) return;
+
+    let node = shell.nextElementSibling;
+    const moved=[];
+    while(node){
+      const nxt = node.nextElementSibling;
+      // Don't move Streamlit's menu/header etc; only move element containers.
+      if(node.matches('[data-testid="stElementContainer"], .element-container')){
+        panel.appendChild(node);
+        moved.push(node);
+      }
+      node = nxt;
+    }
+
+    // Make sure panel scroll works even after moves
+    panel.style.overflowY = 'auto';
+  }
+
+  // Run now + after layout settles
+  setTimeout(relocate, 0);
+  setTimeout(relocate, 200);
+  setTimeout(relocate, 800);
+
+  // Keep relocating on any Streamlit rerender
+  const bc = qs('section.main div.block-container');
+  if(bc){
+    const obs = new MutationObserver(()=>{ relocate(); });
+    obs.observe(bc, {childList:true, subtree:true});
+  }
+})();
+</script>
+    """,
+    height=0,
+)
+
+st.markdown(
+    f"""
+    <style>
+      /* --- Global --- */
+      :root {{
+        /* iOS Safari viewport fix: JS sets --vh to 1% of innerHeight */
+        --vh: 1vh;
+      }}
+
+      html, body {{
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #0b0f16;
+        overflow: hidden; /* we'll manage scrolling inside the interaction panel */
+      }}
+
+      /* Hide Streamlit header/footer chrome */
+      header[data-testid='stHeader'] {{ display: none; }}
+      footer {{ display: none; }}
+
+      /* Stage (top 60%) */
+      .stage {{
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: calc(var(--vh) * 60);
+        /* Always keep stage behind the interaction panel/widgets */
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+        background: #0b0f16;
+      }}
+
+      /* Force all Streamlit widgets/content above the stage (Safari/iOS stacking quirks) */
+      section.main > div.block-container > div:not(.stage) {{
+        position: relative;
+        z-index: 50;
+      }}
+      .stage-bg-img {{
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        filter: saturate(1.05) contrast(1.02);
+        transform: translateZ(0);
+      }}
+
+      /* Dark gradient for readability */
+      .stage-shade {{
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.55));
+      }}
+
+      /* Avatar overlay */
+      .stage-avatar {{
+        position: absolute;
+        left: 50%;
+        top: 58%;
+        transform: translate(-50%, -50%);
+        width: min(72vw, 520px);
+        height: auto;
+        border: none;
+        background: transparent;
+        border-radius: 18px;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+        pointer-events: none;
+      }}
+
+      /* Scenario selector sits inside the stage (top bar) */
+      div[data-testid='stSelectbox'] {{
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 60;
+        margin: 0 !important;
+      }}
+      div[data-testid='stSelectbox'] label {{ display: none; }}
+
+      /* Keep Streamlit's main container in normal flow (do NOT fix it).
+         We'll create our own fixed interaction panel wrapper below. */
+      section.main > div.block-container {{
+        padding-top: calc(var(--vh) * 60) !important; /* push content below stage */
+        max-width: 100% !important;
+      }}
+      @supports (height: 100svh) {{
+        section.main > div.block-container {{
+          padding-top: 60svh !important;
+        }}
+      }}
+
+      /* Interaction panel wrapper (bottom 40%) */
+      .interaction-panel {{
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: calc(var(--vh) * 60);
+        height: calc(var(--vh) * 40);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 16px 14px 18px 14px;
+        background: rgba(255,255,255,0.1);
+        border-top: 1px solid rgba(255,255,255,0.10);
+        z-index: 50;
+
+        /* DEBUG: show panel bounds */
+        border: 2px solid rgba(255, 0, 0, 0.85);
+      }}
+      @supports (height: 100svh) {{
+        .interaction-panel {{
+          top: 60svh;
+          height: 40svh;
+        }}
+      }}
+
+      /* Reduce extra whitespace */
+      .block-container {{ padding-bottom: 0 !important; }}
+    </style>
+
+    <script>
+      // iOS Safari: make vh stable by using innerHeight
+      (function() {{
+        function setVh() {{
+          var vh = window.innerHeight * 0.01;
+          document.documentElement.style.setProperty('--vh', vh + 'px');
+        }}
+        setVh();
+        window.addEventListener('resize', setVh);
+        window.addEventListener('orientationchange', setVh);
+      }})();
+    </script>
+
+    <div class="stage">
+      {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
+      <div class="stage-shade"></div>
+      {f"<img class='stage-avatar' src='{avatar_uri}' />" if avatar_uri else ""}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # ---------- Panel content (rendered into our fixed wrapper) ----------
+st.markdown("<div class='interaction-panel'>", unsafe_allow_html=True)
 
 if st.session_state.conversation:
     turn = st.session_state.conversation[-1]
@@ -762,7 +828,7 @@ if st.session_state.conversation:
         st.markdown('**Tutor:**')
         st.markdown(turn['tutor'])
 else:
-    st.write('Say something to start.')
+    pass
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
