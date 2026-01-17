@@ -6,6 +6,8 @@ import tempfile
 import os
 import re
 import io
+import base64
+import mimetypes
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
@@ -47,6 +49,18 @@ def resolve_asset(path: str) -> str | None:
     if not path:
         return None
 
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = 'image/png'
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
+
     if os.path.exists(path):
         return path
 
@@ -80,8 +94,8 @@ BACKGROUNDS = {
     "🚶 Asking directions": "assets/backgrounds/directions.jpg",
 }
 
-st.title("Italian Conversation Practice 🇮🇹")
-st.write("Partner speaks Italian. Tutor helps when needed.")
+# st.title("Italian Conversation Practice 🇮🇹")
+# st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
@@ -94,6 +108,146 @@ scenario = st.selectbox(
 
 avatar_path = resolve_asset(AVATARS.get(scenario, ""))
 background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
+
+# ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
+
+# --- UI-only: Stage visuals ---
+
+background_uri = None
+if background_path:
+    try:
+        background_uri = img_file_to_data_uri(background_path)
+    except Exception:
+        background_uri = None
+
+stage_bg = f"url('{background_uri}')" if background_uri else "none"
+
+avatar_uri = None
+if avatar_path:
+    try:
+        avatar_uri = img_file_to_data_uri(avatar_path)
+    except Exception:
+        avatar_uri = None
+
+
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
+
+st.markdown(
+    f"""
+    <style>
+    html, body {{
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }}
+    header[data-testid='stHeader'] {{ display: none; }}
+    footer {{ display: none; }}
+
+    /* Make Streamlit main container become the interaction panel */
+    div.block-container {{
+      position: fixed;
+      top: 60vh;
+      left: 0;
+      right: 0;
+      height: 40vh;
+      overflow-y: auto;
+      padding: 14px 14px 18px 14px !important;
+      background: rgba(255,255,255,0.97);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 1000;
+      max-width: 100% !important;
+    }}
+
+    /* Stage: top 60% */
+    .stage {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60vh;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.55)),
+        {stage_bg};
+      background-size: cover;
+      background-position: center;
+      overflow: hidden;
+      z-index: 2000;
+      
+    }}
+
+    /* Scenario bar INSIDE the stage image */
+    .stage-topbar {{
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 78px;
+      background: rgba(255,255,255,0.78);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      z-index: 30;
+    }}
+
+    /* Pin selectbox into the stage-topbar area */
+    div[data-testid='stSelectbox'] {{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 2100;
+      margin: 0;
+    }}
+    /* Hide the selectbox label to remove extra whitespace above */
+    div[data-testid='stSelectbox'] label {{
+      display: none;
+    }}
+
+    /* Avatar inside stage */
+    .avatar-float {{
+      position: absolute;
+      left: 50%;
+      top: 62%;
+      transform: translate(-50%, -50%);
+      width: min(62vw, 460px);
+      height: auto;
+      border: none;
+      background: transparent;
+      border-radius: 24px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.26);
+      z-index: 20;
+      pointer-events: none;
+    }}
+    </style>
+
+    <div class='stage'>
+      <div class='stage-topbar'></div>
+      {avatar_html}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --- Interaction content (unchanged logic; just rendered in bottom panel) ---
+for i, turn in enumerate(st.session_state.conversation):
+    st.markdown(f"**You:** {turn['user']}")
+    st.markdown(f"**AI (Partner):** {turn['partner']}")
+
+    if turn.get('audio') and os.path.exists(turn['audio']):
+        st.audio(turn['audio'])
+
+    if st.button("Show English", key=f"translate_{i}"):
+        if turn.get('translation') is None:
+            turn['translation'] = translate_to_english(turn['partner'])
+
+    if turn.get('translation'):
+        st.markdown(f"🟦 *English:* {turn['translation']}")
+
+    if turn.get('tutor'):
+        st.markdown("**Tutor:**")
+        st.markdown(turn['tutor'])
+
+
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
@@ -332,7 +486,6 @@ if not st.session_state.messages:
 
 # ================== USER INPUT ==================
 
-import io
 
 st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
@@ -547,142 +700,6 @@ if user_input and user_input != st.session_state.last_user_input:
         "audio": audio_path,
         "translation": None
     })
-
-# ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
-
-# --- UI-only: Stage visuals ---
-
-background_uri = None
-if background_path:
-    try:
-        background_uri = img_file_to_data_uri(background_path)
-    except Exception:
-        background_uri = None
-
-stage_bg = f"url('{background_uri}')" if background_uri else "none"
-
-avatar_uri = None
-if avatar_path:
-    try:
-        avatar_uri = img_file_to_data_uri(avatar_path)
-    except Exception:
-        avatar_uri = None
-
-
-avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
-
-st.markdown(
-    f"""
-    <style>
-    html, body {{
-      height: 100%;
-      overflow: hidden;
-    }}
-    header[data-testid='stHeader'] {{ display: none; }}
-    footer {{ display: none; }}
-
-    /* Make Streamlit main container become the interaction panel */
-    section.main > div.block-container {{
-      position: fixed;
-      top: 60vh;
-      left: 0;
-      right: 0;
-      height: 40vh;
-      overflow-y: auto;
-      padding: 14px 14px 18px 14px !important;
-      background: rgba(255,255,255,0.97);
-      border-top: 1px solid rgba(0,0,0,0.08);
-      z-index: 1000;
-      max-width: 100% !important;
-    }}
-
-    /* Stage: top 60% */
-    .stage {{
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 60vh;
-      background-image:
-        linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.55)),
-        {stage_bg};
-      background-size: cover;
-      background-position: center;
-      overflow: hidden;
-      z-index: 2000;
-      outline: 4px solid red;
-    }}
-
-    /* Scenario bar INSIDE the stage image */
-    .stage-topbar {{
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 78px;
-      background: rgba(255,255,255,0.78);
-      backdrop-filter: blur(6px);
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      z-index: 30;
-    }}
-
-    /* Pin selectbox into the stage-topbar area */
-    div[data-testid='stSelectbox'] {{
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      z-index: 2100;
-      margin: 0;
-    }}
-    /* Hide the selectbox label to remove extra whitespace above */
-    div[data-testid='stSelectbox'] label {{
-      display: none;
-    }}
-
-    /* Avatar inside stage */
-    .avatar-float {{
-      position: absolute;
-      left: 50%;
-      top: 62%;
-      transform: translate(-50%, -50%);
-      width: min(62vw, 460px);
-      height: auto;
-      border: none;
-      background: transparent;
-      border-radius: 24px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.26);
-      z-index: 20;
-      pointer-events: none;
-    }}
-    </style>
-
-    <div class='stage'>
-      <div class='stage-topbar'></div>
-      {avatar_html}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-# --- Interaction content (unchanged logic; just rendered in bottom panel) ---
-for i, turn in enumerate(st.session_state.conversation):
-    st.markdown(f"**You:** {turn['user']}")
-    st.markdown(f"**AI (Partner):** {turn['partner']}")
-
-    if turn.get('audio') and os.path.exists(turn['audio']):
-        st.audio(turn['audio'])
-
-    if st.button("Show English", key=f"translate_{i}"):
-        if turn.get('translation') is None:
-            turn['translation'] = translate_to_english(turn['partner'])
-
-    if turn.get('translation'):
-        st.markdown(f"🟦 *English:* {turn['translation']}")
-
-    if turn.get('tutor'):
-        st.markdown("**Tutor:**")
-        st.markdown(turn['tutor'])
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
