@@ -6,9 +6,29 @@ import tempfile
 import os
 import re
 import io
-import base64
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+
+
+def speak_italian(text: str) -> str:
+    if not text or not text.strip():
+        return ""
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp.close()
+    audio_path = tmp.name
+
+    speech = client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice="alloy",
+        input=text.strip()
+    )
+
+    with open(audio_path, "wb") as f:
+        f.write(speech.read())
+
+    return audio_path
+
 
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
@@ -37,69 +57,6 @@ def looks_non_italian_or_garbled(text: str) -> bool:
 load_dotenv()
 client = OpenAI()
 
-# ================== ASSET HELPERS (UI only) ==================
-def resolve_asset(path: str) -> str | None:
-    """Return an existing path, trying common image extensions if needed."""
-    if not path:
-        return None
-    if os.path.exists(path):
-        return path
-    # Try swapping .png <-> .jpg/.jpeg (useful if you renamed files)
-    base, ext = os.path.splitext(path)
-    candidates = []
-    if ext.lower() == '.png':
-        candidates = [base + '.jpg', base + '.jpeg']
-    elif ext.lower() in ('.jpg', '.jpeg'):
-        candidates = [base + '.png']
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
-
-def img_to_base64(path: str) -> str:
-    with open(path, 'rb') as f:
-        return base64.b64encode(f.read()).decode('utf-8')
-
-import mimetypes
-
-def img_file_to_data_uri(path: str) -> str:
-    """
-    Convert an image file to a data URI usable in HTML <img src="...">
-    """
-    mime_type, _ = mimetypes.guess_type(path)
-    if not mime_type:
-        mime_type = "image/png"  # safe default
-
-    b64 = img_to_base64(path)
-    return f"data:{mime_type};base64,{b64}"
-
-
-# ================== USER PRONUNCIATION (UI only) ==================
-def speak_italian(text: str) -> str | None:
-    """Generate Italian TTS for the given sentence and return a temp mp3 path."""
-    if not text or not text.strip():
-        return None
-    audio_path = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp:
-            audio_path = tmp.name
-        speech = client.audio.speech.create(
-            model='gpt-4o-mini-tts',
-            voice='alloy',
-            input=text.strip()
-        )
-        with open(audio_path, 'wb') as f:
-            f.write(speech.read())
-        return audio_path
-    except Exception:
-        # keep app running even if TTS fails
-        if audio_path and os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-            except Exception:
-                pass
-        return None
-
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
@@ -114,22 +71,6 @@ scenario = st.selectbox(
         "🚶 Asking directions"
     ]
 )
-
-# ================== SCENARIO VISUALS (UI only) ==================
-AVATARS = {
-    '☕ Ordering coffee / food': 'assets/avatars/barista.png',
-    '🚆 Buying tickets / transport': 'assets/avatars/ticket_clerk.png',
-    '🚶 Asking directions': 'assets/avatars/local_person.png',
-}
-
-BACKGROUNDS = {
-    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.png',
-    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.png',
-    '🚶 Asking directions': 'assets/backgrounds/directions.png',
-}
-
-avatar_path = resolve_asset(AVATARS.get(scenario, ''))
-background_path = resolve_asset(BACKGROUNDS.get(scenario, ''))
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
@@ -584,104 +525,38 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY (LATEST ONLY + SCENE) ==================
-
-# Background wrapper (only affects UI)
-if background_path:
-    try:
-        img_b64 = img_to_base64(background_path)
-
-        avatar_uri = None
-        if avatar_path:
-            avatar_uri = img_file_to_data_uri(avatar_path)
-
-        st.markdown(
-            f"""
-            <style>
-            .scenario-wrap {{
-                position: relative;
-                border-radius: 18px;
-                padding: 18px;
-                min-height: 520px;
-                background-image: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
-                                  url('data:image/jpg;base64,{img_b64}');
-                background-size: cover;
-                background-position: center;
-                overflow: hidden;
-            }}
-            .overlay-box {{
-                background: rgba(255,255,255,0.88);
-                border-radius: 14px;
-                padding: 14px;
-                max-width: 980px;
-                }}
-                
-            .avatar-float {{
-                position: absolute;
-                left: 50%;
-                top: 55%;
-                transform: translate(-50%, -50%);
-                width: min(70vw, 520px);   /* ~2/3 screen width on mobile, capped on desktop */
-                height: auto;
-                border-radius: 18px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.35);
-                box-shadow: 0 10px 25px rgba(0,0,0,0.25);
-                border: none;               /* <-- add this or just remove the border line */
-                background: transparent;    /* <-- ensures no “card” background */
-            }}
-
-            </style>
-            <div class="scenario-wrap">
-                {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
-                <div class="overlay-box">
-            """,
-            unsafe_allow_html=True
-        )
-        st.markdown("</div></div>", unsafe_allow_html=True)
-
-    except Exception:
-        # If image missing/bad, just skip the background UI
-        pass
-
-st.subheader('Latest turn')
+# ================== DISPLAY (LATEST ONLY) ==================
+st.subheader("Latest turn")
 
 if st.session_state.conversation:
+    i = len(st.session_state.conversation) - 1
     turn = st.session_state.conversation[-1]
 
-    colA, colB = st.columns([1, 3], vertical_alignment='top')
+    st.markdown(f"**You:** {turn['user']}")
 
-    with colB:
-        st.markdown(f"**You:** {turn['user']}")
+    #if st.button("🔊 Listen (Italian pronunciation)", key=f"speak_user_{i}"):
+    user_audio = speak_italian(turn["user"])
+    if user_audio and os.path.exists(user_audio):
+        st.audio(user_audio)
 
-        if st.button('🔊 Listen (Italian pronunciation)', key='speak_user_latest'):
-            user_audio = speak_italian(turn['user'])
-            if user_audio and os.path.exists(user_audio):
-                st.audio(user_audio)
+    st.markdown(f"**AI (Partner):** {turn['partner']}")
 
-        st.markdown(f"**AI (Partner):** {turn['partner']}")
+    if turn["audio"] and os.path.exists(turn["audio"]):
+        st.audio(turn["audio"])
 
-        if turn.get('audio') and os.path.exists(turn['audio']):
-            st.audio(turn['audio'])
+    if st.button("Show English", key="translate_latest"):
+        if turn["translation"] is None:
+            turn["translation"] = translate_to_english(turn["partner"])
 
-        if st.button('Show English', key='translate_latest'):
-            if turn.get('translation') is None:
-                turn['translation'] = translate_to_english(turn['partner'])
+    if turn["translation"]:
+        st.markdown(f"🟦 *English:* {turn['translation']}")
 
-        if turn.get('translation'):
-            st.markdown(f"🟦 *English:* {turn['translation']}")
-
-        if turn.get('tutor'):
-            st.markdown('**Tutor:**')
-            st.markdown(turn['tutor'])
+    if turn["tutor"]:
+        st.markdown("**Tutor:**")
+        st.markdown(turn["tutor"])
 else:
-    st.write('Say something to start.')
+    st.write("Say something to start.")
 
-# Close background wrapper
-if background_path:
-    try:
-        st.markdown('</div></div>', unsafe_allow_html=True)
-    except Exception:
-        pass
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
