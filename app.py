@@ -70,23 +70,23 @@ STAGE_AVATARS = {
        # "assets/avatars/cafe.png",
         "assets/avatars/cafe.jpg",
         "assets/avatars/barista.png",
-       # "assets/avatars/avatar_cafe.png",
-       # "assets/cafe.png",
-       # "cafe.png",
+        "assets/avatars/avatar_cafe.png",
+        "assets/cafe.png",
+        "cafe.png",
     ],
     "🚆 Buying tickets / transport": [
       #  "assets/avatars/transport.png",
         "assets/avatars/transport.jpg",
         "assets/avatars/ticket_clerk.png",
-      #  "assets/transport.png",
-       # "transport.png",
+        "assets/transport.png",
+        "transport.png",
     ],
     "🚶 Asking directions": [
-       # "assets/avatars/directions.png",
-        "assets/avatars/directions.jpg",
+        "assets/avatars/directions.png",
+       # "assets/avatars/directions.jpg",
         "assets/avatars/local_person.png",
-      #  "assets/directions.png",
-       # "directions.png",
+        "assets/directions.png",
+        "directions.png",
     ],
 }
 
@@ -387,7 +387,7 @@ if not st.session_state.messages:
 
 import io
 
-# st.subheader("🎙️ Speak (optional)")
+st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
