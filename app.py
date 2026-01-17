@@ -168,14 +168,29 @@ st.markdown(
       left: 0;
       right: 0;
       height: 60vh;
-      background-image:
-        linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.55)),
-        {stage_bg};
-      background-size: cover;
-      background-position: center;
       overflow: hidden;
       z-index: 2000;
-      
+    }}
+
+    /* Background image as <img> (works better on iOS than CSS data-uri backgrounds) */
+    .stage-bg {{
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      z-index: 1;
+      pointer-events: none;
+    }}
+
+    /* Dark gradient overlay */
+    .stage-overlay {{
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.55));
+      z-index: 2;
+      pointer-events: none;
     }}
 
     /* Scenario bar INSIDE the stage image */
@@ -188,21 +203,24 @@ st.markdown(
       background: rgba(255,255,255,0.78);
       backdrop-filter: blur(6px);
       border-bottom: 1px solid rgba(0,0,0,0.06);
-      z-index: 2000;
+      z-index: 30;
     }}
 
-    /* Pin selectbox into the stage-topbar area */
-    div[data-testid='stSelectbox'] {{
-      position: fixed;
-      top: calc(env(safe-area-inset-top, 0px) + 10px);
-      left: 12px;
-      right: 12px;
-      z-index: 5000;
-      margin: 0;
+    /* Pin selectbox into the stage-topbar area (robust selectors) */
+    div[data-testid='stSelectbox'],
+    div[data-testid="stSelectbox"],
+    div[class*='stSelectbox'] {{
+      position: fixed !important;
+      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+      left: 12px !important;
+      right: 12px !important;
+      z-index: 5000 !important;
+      margin: 0 !important;
     }}
-    /* Hide the selectbox label to remove extra whitespace above */
-    div[data-testid='stSelectbox'] label {{
-      display: none;
+    div[data-testid='stSelectbox'] label,
+    div[data-testid="stSelectbox"] label,
+    div[class*='stSelectbox'] label {{
+      display: none !important;
     }}
 
     /* Avatar inside stage */
@@ -217,12 +235,14 @@ st.markdown(
       background: transparent;
       border-radius: 24px;
       box-shadow: 0 12px 30px rgba(0,0,0,0.26);
-      z-index: 20;
+      z-index: 25;
       pointer-events: none;
     }}
     </style>
 
     <div class='stage'>
+      <img class='stage-bg' src='{background_uri}' />
+      <div class='stage-overlay'></div>
       <div class='stage-topbar'></div>
       {avatar_html}
     </div>
