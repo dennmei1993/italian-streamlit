@@ -391,148 +391,120 @@ avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar' />" if
 
 # ================== DISPLAY (Stage 60% + Interaction Panel 40%) ==================
 
-# NOTE: We build a fixed Stage (top) + fixed Interaction Panel (bottom).
-# Then we use a tiny JS relocation that moves *all* Streamlit elements
-# that appear after this shell into the panel.
-# This is the most reliable approach on iPhone/Safari.
+# NOTE: We build a fixed Stage (top) and turn Streamlit's main block-container
+# into the fixed Interaction Panel (bottom). This avoids any JS relocation and
+# is the most reliable approach on iPhone/Safari.
 
 stage_html = """
 <style>
-:root { --stage-h: 60vh; }
-@supports (height: 100svh) { :root { --stage-h: 60svh; } }
-@supports (height: 100dvh) { :root { --stage-h: 60dvh; } }
+:root {
+  /* iOS Safari can misreport vh; we set --vh via JS to window.innerHeight*0.01px */
+  --vh: 1vh;
+  --stage-h: calc(var(--vh) * 60);
+}
 
 html, body { height: 100%; overflow: hidden; }
 header[data-testid='stHeader'] { display: none; }
 footer { display: none; }
 
-/* Let the Streamlit app container exist, but we will relocate its children into #panel-root */
+/* The Streamlit main content becomes the Interaction Panel */
 section.main > div.block-container {
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
+  position: fixed;
+  top: var(--stage-h);
+  left: 0;
+  right: 0;
+  height: calc((var(--vh) * 100) - var(--stage-h));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 14px 18px 14px !important;
+  background: rgba(13, 17, 23, 0.92);
+  border-top: 1px solid rgba(255,255,255,0.10);
   max-width: 100% !important;
+  z-index: 20;
 }
 
+/* Remove default top padding/margins that can create blank areas */
+section.main { padding-top: 0 !important; }
+
+/* Stage: fixed top area */
 #stage-root {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   height: var(--stage-h);
-  {{STAGE_BG_STYLE}}
+  background-image:
+    linear-gradient(rgba(0,0,0,0.10), rgba(0,0,0,0.55)),
+    {{STAGE_BG_STYLE}};
   background-size: cover;
   background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
   z-index: 10;
 }
 
-#panel-root {
-  position: fixed;
-  top: var(--stage-h);
-  left: 0;
-  right: 0;
-  height: calc(100vh - var(--stage-h));
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 14px 14px 18px 14px;
-  background: rgba(20, 22, 26, 0.2);
-  border-top: 1px solid rgba(255,255,255,0.12);
-  z-index: 20;
-}
-
-/* Keep the scenario selector visually on the stage */
+/* Scenario selector pinned INSIDE stage */
 div[data-testid='stSelectbox'] {
   position: fixed;
-  top: 10px;
+  top: 12px;
   left: 12px;
   right: 12px;
-  z-index: 30;
+  z-index: 50;
 }
 
 div[data-testid='stSelectbox'] label { display: none; }
 
+/* Avatar inside stage */
 .avatar-float {
   position: absolute;
   left: 50%;
-  top: 55%;
+  top: 62%;
   transform: translate(-50%, -50%);
   width: min(72vw, 520px);
-  max-height: calc(var(--stage-h) - 90px);
   height: auto;
   border: none;
   background: transparent;
   border-radius: 24px;
   box-shadow: 0 12px 30px rgba(0,0,0,0.26);
-  z-index: 15;
+  z-index: 20;
   pointer-events: none;
 }
+
+/* Make widgets in the panel readable on dark background */
+section.main > div.block-container, section.main > div.block-container * {
+  color: #f1f1f1;
+}
+
 </style>
 
-<div id='stage-root'>
-  {{AVATAR_HTML}}
-</div>
-<div id='panel-root'></div>
-
 <script>
-(function() {
-  const MAX_TRIES = 120;
-  let tries = 0;
-
-  function closest(el, sel) {
-    while (el && el.nodeType === 1) {
-      if (el.matches(sel)) return el;
-      el = el.parentElement;
-    }
-    return null;
+(function(){
+  function setVH(){
+    var vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', vh + 'px');
   }
-
-  function relocate() {
-    const panel = document.getElementById('panel-root');
-    const stage = document.getElementById('stage-root');
-    if (!panel || !stage) return false;
-
-    // Streamlit's main block-container holds all element-containers.
-    const bc = document.querySelector('section.main div.block-container');
-    if (!bc) return false;
-
-    // The stage/panel shell lives inside a markdown element-container.
-    const shell = closest(stage, 'div.element-container') || closest(stage, 'div[data-testid="stMarkdown"]') || stage.parentElement;
-    if (!shell) return false;
-
-    // Move all sibling element-containers that appear AFTER the shell into the panel.
-    // This captures subheader("Speak (optional)"), audio_input, text_input, reset button, etc.
-    const toMove = [];
-    let node = shell.nextElementSibling;
-    while (node) {
-      // Don't move Streamlit's floating elements (like the chat/support widget), only app blocks.
-      toMove.push(node);
-      node = node.nextElementSibling;
-    }
-    toMove.forEach(n => panel.appendChild(n));
-
-    // Keep relocating newly inserted nodes on reruns.
-    if (!bc.__panelObserver) {
-      const obs = new MutationObserver(() => {
-        // Debounce-ish: run relocate on next frame.
-        window.requestAnimationFrame(() => relocate());
-      });
-      obs.observe(bc, { childList: true });
-      bc.__panelObserver = obs;
-    }
-
-    return true;
-  }
-
-  function tick() {
-    tries += 1;
-    if (relocate()) return;
-    if (tries < MAX_TRIES) window.requestAnimationFrame(tick);
-  }
-
-  window.requestAnimationFrame(tick);
+  setVH();
+  window.addEventListener('resize', setVH);
+  window.addEventListener('orientationchange', setVH);
 })();
 </script>
+
+<script>
+(function(){
+  function setVH(){
+    var vh = (window.innerHeight || document.documentElement.clientHeight) * 0.01;
+    document.documentElement.style.setProperty('--vh', vh + 'px');
+  }
+  setVH();
+  window.addEventListener('resize', setVH);
+})();
+</script>
+
+<div id="stage-root">
+  {{AVATAR_HTML}}
+</div>
 """
+
 
 # Inject avatar HTML into stage_html
 avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
