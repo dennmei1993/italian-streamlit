@@ -140,14 +140,14 @@ with open("vocab.json", encoding="utf-8") as f:
 #st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
-    "Choose a scenario",
+    "",
     [
-        "☕ Ordering coffee / food",
+"☕ Ordering coffee / food",
         "🚆 Buying tickets / transport",
         "🚶 Asking directions"
-    ]
+    ],
+    label_visibility="collapsed"
 )
-
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
     common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
@@ -561,7 +561,7 @@ if user_input and user_input != st.session_state.last_user_input:
                 "TRANSPORT": "La fermata è lì davanti.",
                 "ORDERING": "Va bene.",
                 "DIRECTIONS": "È da questa parte.",
-            }.get(st.session_state.scenario, "Va bene.")
+            }.get(st.session_state.stage, "Va bene.")
 
 
 # ================== PARTNER ANTI-CORRECTION GUARD ==================
@@ -633,6 +633,7 @@ st.markdown(
       left: 0;
       width: 100vw;
       height: 60vh;
+      height: 60dvh;
       overflow: hidden;
       z-index: 10;
       background: #000;
@@ -642,6 +643,7 @@ st.markdown(
       inset: 0;
       width: 100vw;
       height: 60vh;
+      height: 60dvh;
       object-fit: cover;
       display: block;
       z-index: 10;
@@ -696,17 +698,21 @@ st.markdown(
     }}
 
     /* Interaction panel: bottom 40% */
-    section.main > div.block-container {{
+    div[data-testid='stAppViewContainer'] section.main > div.block-container {{
       position: fixed;
       top: 60vh;
+      top: 60dvh;
       left: 0;
       right: 0;
       height: 40vh;
+      height: calc(100dvh - 60dvh);
+      height: calc(100vh - 60vh);
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       padding: 14px 14px 18px 14px !important;
       background: rgba(255,255,255,0.94);
       border-top: 1px solid rgba(0,0,0,0.08);
-      z-index: 100;
+      z-index: 9999;
       max-width: 100% !important;
     }}
     </style>
