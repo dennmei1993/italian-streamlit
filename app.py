@@ -628,7 +628,6 @@ stage_html = f"""
     padding: 16px 14px 20px 14px !important;
     max-width: 100% !important;
     z-index: 200;
-    border-top: 6px solid rgba(255,0,0,1);
 
     /* Make panel clearly ABOVE stage */
     background: rgba(11, 15, 22, 0.98);
@@ -663,6 +662,7 @@ stage_html = f"""
     background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
   }}
 
+  ===
   .avatar-img {{
     position: absolute;
     left: 50%;
@@ -676,7 +676,7 @@ stage_html = f"""
     pointer-events: none;
     z-index: 80;
   }}
-
+===
   /* Scenario selectbox pinned inside the stage */
   div[data-testid='stSelectbox'] {{
     position: fixed;
