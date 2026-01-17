@@ -67,7 +67,7 @@ STAGE_BACKGROUNDS = {
 }
 STAGE_AVATARS = {
     "☕ Ordering coffee / food": [
-        "assets/avatars/cafe.png",
+       # "assets/avatars/cafe.png",
         "assets/avatars/cafe.jpg",
         "assets/avatars/barista.png",
         "assets/avatars/avatar_cafe.png",
@@ -75,16 +75,16 @@ STAGE_AVATARS = {
         "cafe.png",
     ],
     "🚆 Buying tickets / transport": [
-        "assets/avatars/transport.png",
+      #  "assets/avatars/transport.png",
         "assets/avatars/transport.jpg",
-        "assets/avatars/avatar_transport.png",
+        "assets/avatars/ticket_clerk.png",
         "assets/transport.png",
         "transport.png",
     ],
     "🚶 Asking directions": [
         "assets/avatars/directions.png",
-        "assets/avatars/directions.jpg",
-        "assets/avatars/avatar_directions.png",
+       # "assets/avatars/directions.jpg",
+        "assets/avatars/local_person.png",
         "assets/directions.png",
         "directions.png",
     ],
