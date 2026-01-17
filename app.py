@@ -617,8 +617,8 @@ st.markdown(
     f"""
     <style>
     :root { --stage-h: 60vh; }
-    @supports (height: 100svh) { :root { --stage-h: 60svh; } }
-    @supports (height: 100dvh) { :root { --stage-h: 60dvh; } }
+    @supports (height: 100svh) {{ :root {{ --stage-h: 60svh; }} }}
+    @supports (height: 100dvh) {{ :root {{ --stage-h: 60dvh; }} }}
 
     html, body {
       height: 100%;
