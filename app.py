@@ -610,6 +610,7 @@ st.markdown(
       background-position: center;
       overflow: hidden;
       z-index: 2000;
+      outline: 4px solid red;
     }}
 
     /* Scenario bar INSIDE the stage image */
