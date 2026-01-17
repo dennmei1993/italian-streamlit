@@ -704,13 +704,11 @@ stage_html = f"""
   window.addEventListener('resize', __setVh);
 </script>
 
-===
 <div class="stage">
   {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
   <div class="stage-overlay"></div>
   {f"<img class='avatar-img' src='{avatar_uri}' />" if avatar_uri else ""}
 </div>
-===
 
 """
 
