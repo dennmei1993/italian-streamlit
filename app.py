@@ -388,129 +388,161 @@ if avatar_path:
 stage_bg_style = f"background-image: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55)), url('{background_uri}');" if background_uri else "background: #0b0f17;"
 avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar' />" if avatar_uri else ""
 
-st.markdown(
-    f"""
-    <style>
-      :root {{ --stage-h: 60vh; }}
 
-      /* iOS address bar: compute a stable vh */
-      html, body {{ height: 100%; overflow: hidden; }}
-      header[data-testid='stHeader'] {{ display: none; }}
-      footer {{ display: none; }}
+# ================== DISPLAY (Stage 60% + Interaction Panel 40%) ==================
 
-      /* Stage (top) */
-      #stage-root {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: var(--stage-h);
-        {stage_bg_style}
-        background-size: cover;
-        background-position: center;
-        overflow: hidden;
-        z-index: 10;
-      }}
-      .avatar-float {{
-        position: absolute;
-        left: 50%;
-        top: 54%;
-        transform: translate(-50%, -50%);
-        width: min(78vw, 520px);
-        height: auto;
-        border: none;
-        background: transparent;
-        border-radius: 24px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.26);
-        z-index: 12;
-        pointer-events: none;
-      }}
+# NOTE: We build a fixed Stage (top) + fixed Interaction Panel (bottom).
+# Then we use a tiny JS relocation that moves *all* Streamlit elements
+# that appear after this shell into the panel.
+# This is the most reliable approach on iPhone/Safari.
 
-      /* Scenario selector pinned on top of stage */
-      div[data-testid='stSelectbox'] {{
-        position: fixed;
-        top: 10px;
-        left: 12px;
-        right: 12px;
-        z-index: 30;
-        margin: 0;
-      }}
-      div[data-testid='stSelectbox'] label {{ display: none; }}
+stage_html = """
+<style>
+:root { --stage-h: 60vh; }
+@supports (height: 100svh) { :root { --stage-h: 60svh; } }
+@supports (height: 100dvh) { :root { --stage-h: 60dvh; } }
 
-      /* Panel (bottom) */
-      #panel-root {{
-        position: fixed;
-        left: 0;
-        right: 0;
-        top: var(--stage-h);
-        height: calc(100vh - var(--stage-h));
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        background: rgba(10,14,22,0.2);
-        z-index: 20;
-        padding: 14px 14px 26px 14px;
-      }}
+html, body { height: 100%; overflow: hidden; }
+header[data-testid='stHeader'] { display: none; }
+footer { display: none; }
 
-      /* Give the Streamlit content a little breathing room in the panel */
-      #panel-root .stMarkdown, #panel-root .stTextInput, #panel-root .stAudioInput,
-      #panel-root .stButton, #panel-root .stAudio {{
-        color: rgba(255,255,255,0.92);
-      }}
-    </style>
+/* Let the Streamlit app container exist, but we will relocate its children into #panel-root */
+section.main > div.block-container {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  max-width: 100% !important;
+}
 
-    <div id='stage-root'>
-      {avatar_html}
-    </div>
-    <div id='panel-root'></div>
+#stage-root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--stage-h);
+  {{STAGE_BG_STYLE}}
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  z-index: 10;
+}
 
-    <script>
-      // Move Streamlit blocks that come AFTER the stage markup into the fixed panel.
-      (function() {{
-        const MAX_TRIES = 60;
-        let tries = 0;
+#panel-root {
+  position: fixed;
+  top: var(--stage-h);
+  left: 0;
+  right: 0;
+  height: calc(100vh - var(--stage-h));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 14px 18px 14px;
+  background: rgba(20, 22, 26, 0.92);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  z-index: 20;
+}
 
-        function moveBlocks() {{
-          const stage = document.getElementById('stage-root');
-          const panel = document.getElementById('panel-root');
-          const main = document.querySelector("div[data-testid='stAppViewContainer'] section.main")
-                    || document.querySelector("section.main")
-                    || document.querySelector("section[data-testid='stMain']");
-          const bc = main ? main.querySelector('.block-container') : null;
+/* Keep the scenario selector visually on the stage */
+div[data-testid='stSelectbox'] {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  z-index: 30;
+}
 
-          if (!stage || !panel || !bc) return false;
+div[data-testid='stSelectbox'] label { display: none; }
 
-          // Collect nodes after stage-root (stage-root and panel-root are injected inside the block-container).
-          const nodes = [];
-          let n = panel.nextSibling;
-          while (n) {{
-            const next = n.nextSibling;
-            // Skip script/style tags we injected above.
-            if (n.nodeType === Node.ELEMENT_NODE) nodes.push(n);
-            n = next;
-          }}
+.avatar-float {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  transform: translate(-50%, -50%);
+  width: min(72vw, 520px);
+  max-height: calc(var(--stage-h) - 90px);
+  height: auto;
+  border: none;
+  background: transparent;
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.26);
+  z-index: 15;
+  pointer-events: none;
+}
+</style>
 
-          if (!nodes.length) return true; // nothing to move
+<div id='stage-root'>
+  {{AVATAR_HTML}}
+</div>
+<div id='panel-root'></div>
 
-          nodes.forEach(el => {{
-            try {{ panel.appendChild(el); }} catch (e) {{}}
-          }});
-          return true;
-        }}
+<script>
+(function() {
+  const MAX_TRIES = 120;
+  let tries = 0;
 
-        const timer = setInterval(() => {{
-          tries += 1;
-          if (moveBlocks() || tries >= MAX_TRIES) clearInterval(timer);
-        }}, 120);
+  function closest(el, sel) {
+    while (el && el.nodeType === 1) {
+      if (el.matches(sel)) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
 
-        window.addEventListener('resize', () => {{
-          // On iOS, resize fires when the URL bar collapses/expands; re-pack blocks.
-          moveBlocks();
-        }});
-      }})();
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
+  function relocate() {
+    const panel = document.getElementById('panel-root');
+    const stage = document.getElementById('stage-root');
+    if (!panel || !stage) return false;
+
+    // Streamlit's main block-container holds all element-containers.
+    const bc = document.querySelector('section.main div.block-container');
+    if (!bc) return false;
+
+    // The stage/panel shell lives inside a markdown element-container.
+    const shell = closest(stage, 'div.element-container') || closest(stage, 'div[data-testid="stMarkdown"]') || stage.parentElement;
+    if (!shell) return false;
+
+    // Move all sibling element-containers that appear AFTER the shell into the panel.
+    // This captures subheader("Speak (optional)"), audio_input, text_input, reset button, etc.
+    const toMove = [];
+    let node = shell.nextElementSibling;
+    while (node) {
+      // Don't move Streamlit's floating elements (like the chat/support widget), only app blocks.
+      toMove.push(node);
+      node = node.nextElementSibling;
+    }
+    toMove.forEach(n => panel.appendChild(n));
+
+    // Keep relocating newly inserted nodes on reruns.
+    if (!bc.__panelObserver) {
+      const obs = new MutationObserver(() => {
+        // Debounce-ish: run relocate on next frame.
+        window.requestAnimationFrame(() => relocate());
+      });
+      obs.observe(bc, { childList: true });
+      bc.__panelObserver = obs;
+    }
+
+    return true;
+  }
+
+  function tick() {
+    tries += 1;
+    if (relocate()) return;
+    if (tries < MAX_TRIES) window.requestAnimationFrame(tick);
+  }
+
+  window.requestAnimationFrame(tick);
+})();
+</script>
+"""
+
+# Inject avatar HTML into stage_html
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
+stage_html = stage_html.replace("{{AVATAR_HTML}}", avatar_html)
+
+# Inject background style
+stage_html = stage_html.replace("{{STAGE_BG_STYLE}}", stage_bg_style)
+
+st.markdown(stage_html, unsafe_allow_html=True)
+
 
 # ================== USER INPUT ==================
 
