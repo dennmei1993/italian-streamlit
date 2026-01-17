@@ -616,7 +616,7 @@ avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar'/>" if 
 st.markdown(
     f"""
     <style>
-    :root { --stage-h: 60vh; }
+    :root {{ --stage-h: 60vh; }}
     @supports (height: 100svh) {{ :root {{ --stage-h: 60svh; }} }}
     @supports (height: 100dvh) {{ :root {{ --stage-h: 60dvh; }} }}
 
