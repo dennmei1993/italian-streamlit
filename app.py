@@ -6,105 +6,9 @@ import tempfile
 import os
 import re
 import io
-
-# ================== ASSET HELPERS (Stage images) ==================
 import base64
-import mimetypes
-
-def img_to_base64(path: str) -> str:
-    with open(path, 'rb') as f:
-        return base64.b64encode(f.read()).decode('utf-8')
-
-def img_file_to_data_uri(path: str) -> str:
-    """Return a data: URI for an image file (jpg/png/webp)."""
-    mime, _ = mimetypes.guess_type(path)
-    if not mime:
-        # default; most of your backgrounds are jpg
-        mime = 'image/jpeg'
-    b64 = img_to_base64(path)
-    return f"data:{mime};base64,{b64}"
-
-def resolve_asset(rel_path: str) -> str | None:
-    """Resolve an asset path both locally and on Streamlit Cloud."""
-    if not rel_path:
-        return None
-    # direct
-    if os.path.exists(rel_path):
-        return rel_path
-    # relative to this file
-    try:
-        base = os.path.dirname(__file__)
-    except Exception:
-        base = os.getcwd()
-    cand = os.path.join(base, rel_path)
-    if os.path.exists(cand):
-        return cand
-    return None
-
-# Map scenario -> background/avatar. Adjust filenames if yours differ.
-STAGE_BACKGROUNDS = {
-    "☕ Ordering coffee / food": [
-        "assets/backgrounds/cafe.jpg",
-        "assets/backgrounds/cafe.jpeg",
-        "assets/backgrounds/cafe.png",
-        "assets/cafe.jpg",
-        "cafe.jpg",
-    ],
-    "🚆 Buying tickets / transport": [
-        "assets/backgrounds/transport.jpg",
-        "assets/backgrounds/transport.jpeg",
-        "assets/backgrounds/transport.png",
-        "assets/transport.jpg",
-        "transport.jpg",
-    ],
-    "🚶 Asking directions": [
-        "assets/backgrounds/directions.jpg",
-        "assets/backgrounds/directions.jpeg",
-        "assets/backgrounds/directions.png",
-        "assets/directions.jpg",
-        "directions.jpg",
-    ],
-}
-STAGE_AVATARS = {
-    "☕ Ordering coffee / food": [
-       # "assets/avatars/cafe.png",
-        "assets/avatars/cafe.jpg",
-        "assets/avatars/barista.png",
-        "assets/avatars/avatar_cafe.png",
-        "assets/cafe.png",
-        "cafe.png",
-    ],
-    "🚆 Buying tickets / transport": [
-      #  "assets/avatars/transport.png",
-        "assets/avatars/transport.jpg",
-        "assets/avatars/ticket_clerk.png",
-        "assets/transport.png",
-        "transport.png",
-    ],
-    "🚶 Asking directions": [
-        "assets/avatars/directions.png",
-       # "assets/avatars/directions.jpg",
-        "assets/avatars/local_person.png",
-        "assets/directions.png",
-        "directions.png",
-    ],
-}
-
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-
-
-def resolve_any(paths) -> str | None:
-    """Try multiple relative paths and return the first that exists."""
-    if not paths:
-        return None
-    if isinstance(paths, str):
-        paths = [paths]
-    for p in paths:
-        rp = resolve_asset(p)
-        if rp:
-            return rp
-    return None
 
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
@@ -133,6 +37,69 @@ def looks_non_italian_or_garbled(text: str) -> bool:
 load_dotenv()
 client = OpenAI()
 
+# ================== ASSET HELPERS (UI only) ==================
+def resolve_asset(path: str) -> str | None:
+    """Return an existing path, trying common image extensions if needed."""
+    if not path:
+        return None
+    if os.path.exists(path):
+        return path
+    # Try swapping .png <-> .jpg/.jpeg (useful if you renamed files)
+    base, ext = os.path.splitext(path)
+    candidates = []
+    if ext.lower() == '.png':
+        candidates = [base + '.jpg', base + '.jpeg']
+    elif ext.lower() in ('.jpg', '.jpeg'):
+        candidates = [base + '.png']
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+import mimetypes
+
+def img_file_to_data_uri(path: str) -> str:
+    """
+    Convert an image file to a data URI usable in HTML <img src="...">
+    """
+    mime_type, _ = mimetypes.guess_type(path)
+    if not mime_type:
+        mime_type = "image/png"  # safe default
+
+    b64 = img_to_base64(path)
+    return f"data:{mime_type};base64,{b64}"
+
+
+# ================== USER PRONUNCIATION (UI only) ==================
+def speak_italian(text: str) -> str | None:
+    """Generate Italian TTS for the given sentence and return a temp mp3 path."""
+    if not text or not text.strip():
+        return None
+    audio_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp:
+            audio_path = tmp.name
+        speech = client.audio.speech.create(
+            model='gpt-4o-mini-tts',
+            voice='alloy',
+            input=text.strip()
+        )
+        with open(audio_path, 'wb') as f:
+            f.write(speech.read())
+        return audio_path
+    except Exception:
+        # keep app running even if TTS fails
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception:
+                pass
+        return None
+
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
@@ -147,6 +114,22 @@ scenario = st.selectbox(
         "🚶 Asking directions"
     ]
 )
+
+# ================== SCENARIO VISUALS (UI only) ==================
+AVATARS = {
+    '☕ Ordering coffee / food': 'assets/avatars/barista.png',
+    '🚆 Buying tickets / transport': 'assets/avatars/ticket_clerk.png',
+    '🚶 Asking directions': 'assets/avatars/local_person.png',
+}
+
+BACKGROUNDS = {
+    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.png',
+    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.png',
+    '🚶 Asking directions': 'assets/backgrounds/directions.png',
+}
+
+avatar_path = resolve_asset(AVATARS.get(scenario, ''))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ''))
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
@@ -387,7 +370,7 @@ if not st.session_state.messages:
 
 import io
 
-# st.subheader("🎙️ Speak (optional)")
+st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
@@ -601,143 +584,104 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
+# ================== DISPLAY (LATEST ONLY + SCENE) ==================
 
-# --- Resolve stage assets based on selected scenario ---
-background_path = resolve_any(STAGE_BACKGROUNDS.get(scenario, ""))
-avatar_path = resolve_any(STAGE_AVATARS.get(scenario, ""))
+# Background wrapper (only affects UI)
+if background_path:
+    try:
+        img_b64 = img_to_base64(background_path)
 
-background_uri = img_file_to_data_uri(background_path) if background_path else None
-avatar_uri = img_file_to_data_uri(avatar_path) if avatar_path else None
+        avatar_uri = None
+        if avatar_path:
+            avatar_uri = img_file_to_data_uri(avatar_path)
 
-bg_img_html = f"<img class='stage-bg-img' src='{background_uri}' alt='stage'/>" if background_uri else ""
-avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar'/>" if avatar_uri else ""
+        st.markdown(
+            f"""
+            <style>
+            .scenario-wrap {{
+                position: relative;
+                border-radius: 18px;
+                padding: 18px;
+                min-height: 520px;
+                background-image: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.55)),
+                                  url('data:image/jpg;base64,{img_b64}');
+                background-size: cover;
+                background-position: center;
+                overflow: hidden;
+            }}
+            .overlay-box {{
+                background: rgba(255,255,255,0.88);
+                border-radius: 14px;
+                padding: 14px;
+                max-width: 980px;
+                }}
+                
+            .avatar-float {{
+                position: absolute;
+                left: 50%;
+                top: 55%;
+                transform: translate(-50%, -50%);
+                width: min(70vw, 520px);   /* ~2/3 screen width on mobile, capped on desktop */
+                height: auto;
+                border-radius: 18px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+                border: none;               /* <-- add this or just remove the border line */
+                background: transparent;    /* <-- ensures no “card” background */
+            }}
 
-st.markdown(
-    f"""
-    <style>
-    html, body {{
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
-    }}
-    header[data-testid='stHeader'] {{ display: none; }}
-    footer {{ display: none; }}
+            </style>
+            <div class="scenario-wrap">
+                {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
+                <div class="overlay-box">
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
-    /* Stage: fixed top 60% */
-    .stage {{
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 60vh;
-      overflow: hidden;
-      z-index: 10;
-      background: #000;
-    }}
-    .stage-bg-img {{
-      position: absolute;
-      inset: 0;
-      width: 100vw;
-      height: 60vh;
-      object-fit: cover;
-      display: block;
-      z-index: 10;
-    }}
-    .stage-overlay {{
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
-      z-index: 20;
-      pointer-events: none;
-    }}
-    .stage-topbar {{
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 78px;
-      background: rgba(255,255,255,0.86);
-      backdrop-filter: blur(6px);
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      z-index: 40;
-      pointer-events: none;
-    }}
+    except Exception:
+        # If image missing/bad, just skip the background UI
+        pass
 
-    /* Pin the scenario selectbox into the top bar */
-    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
-      position: fixed !important;
-      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
-      left: 12px !important;
-      right: 12px !important;
-      z-index: 6000 !important;
-      margin: 0 !important;
-    }}
-    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {{
-      display: none !important;
-    }}
+st.subheader('Latest turn')
 
-    /* Avatar */
-    .avatar-float {{
-      position: absolute;
-      left: 50%;
-      top: 58%;
-      transform: translate(-50%, -50%);
-      width: min(70vw, 520px);
-      height: 80%;
-      border: none;
-      background: transparent;
-      border-radius: 24px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-      z-index: 50;
-      pointer-events: none;
-    }}
+if st.session_state.conversation:
+    turn = st.session_state.conversation[-1]
 
-    /* Interaction panel: bottom 40% */
-    section.main > div.block-container {{
-      position: fixed;
-      top: 60vh;
-      left: 0;
-      right: 0;
-      height: 40vh;
-      overflow-y: auto;
-      padding: 14px 14px 18px 14px !important;
-      background: rgba(255,255,255,0.94);
-      border-top: 1px solid rgba(0,0,0,0.08);
-      z-index: 100;
-      max-width: 100% !important;
-    }}
-    </style>
+    colA, colB = st.columns([1, 3], vertical_alignment='top')
 
-    <div class='stage'>
-      {bg_img_html}
-      <div class='stage-overlay'></div>
-      <div class='stage-topbar'></div>
-      {avatar_html}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+    with colB:
+        st.markdown(f"**You:** {turn['user']}")
 
-for i, turn in enumerate(st.session_state.conversation):
-    st.markdown(f"**You:** {turn['user']}")
-    st.markdown(f"**AI (Partner):** {turn['partner']}")
+        if st.button('🔊 Listen (Italian pronunciation)', key='speak_user_latest'):
+            user_audio = speak_italian(turn['user'])
+            if user_audio and os.path.exists(user_audio):
+                st.audio(user_audio)
 
-    if turn["audio"] and os.path.exists(turn["audio"]):
-        st.audio(turn["audio"])
+        st.markdown(f"**AI (Partner):** {turn['partner']}")
 
-    if st.button("Show English", key=f"translate_{i}"):
-        if turn["translation"] is None:
-            turn["translation"] = translate_to_english(turn["partner"])
+        if turn.get('audio') and os.path.exists(turn['audio']):
+            st.audio(turn['audio'])
 
-    if turn["translation"]:
-        st.markdown(f"🟦 *English:* {turn['translation']}")
+        if st.button('Show English', key='translate_latest'):
+            if turn.get('translation') is None:
+                turn['translation'] = translate_to_english(turn['partner'])
 
-    if turn["tutor"]:
-        st.markdown("**Tutor:**")
-        st.markdown(turn["tutor"])
+        if turn.get('translation'):
+            st.markdown(f"🟦 *English:* {turn['translation']}")
+
+        if turn.get('tutor'):
+            st.markdown('**Tutor:**')
+            st.markdown(turn['tutor'])
+else:
+    st.write('Say something to start.')
+
+# Close background wrapper
+if background_path:
+    try:
+        st.markdown('</div></div>', unsafe_allow_html=True)
+    except Exception:
+        pass
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
