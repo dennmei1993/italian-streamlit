@@ -703,20 +703,10 @@ st.markdown(
       }}
       div[data-testid='stSelectbox'] label {{ display: none; }}
 
-      /* Keep Streamlit's main container in normal flow (do NOT fix it).
-         We'll create our own fixed interaction panel wrapper below. */
+      /* Make Streamlit's main container BECOME the interaction panel (bottom 40%).
+         This is the most reliable approach on iOS/Safari because Streamlit widgets
+         won't stay inside a custom HTML wrapper. */
       section.main > div.block-container {{
-        padding-top: calc(var(--vh) * 60) !important; /* push content below stage */
-        max-width: 100% !important;
-      }}
-      @supports (height: 100svh) {{
-        section.main > div.block-container {{
-          padding-top: 60svh !important;
-        }}
-      }}
-
-      /* Interaction panel wrapper (bottom 40%) */
-      .interaction-panel {{
         position: fixed;
         left: 0;
         right: 0;
@@ -724,16 +714,17 @@ st.markdown(
         height: calc(var(--vh) * 40);
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
-        padding: 16px 14px 18px 14px;
-        background: rgba(255,255,255,0.1);
+        padding: 16px 14px 18px 14px !important;
+        background: rgba(10, 12, 18, 0.92);
         border-top: 1px solid rgba(255,255,255,0.10);
+        max-width: 100% !important;
         z-index: 50;
 
-        /* DEBUG: show panel bounds */
+        /* DEBUG: show panel bounds (remove later) */
         border: 2px solid rgba(255, 0, 0, 0.85);
       }}
       @supports (height: 100svh) {{
-        .interaction-panel {{
+        section.main > div.block-container {{
           top: 60svh;
           height: 40svh;
         }}
