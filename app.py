@@ -143,6 +143,9 @@ if "last_user_input" not in st.session_state:
 if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
+if "scenario" not in st.session_state:
+    st.session_state.scenario = "ORDERING"
+
 # ================== SCENARIO STATE MACHINE ==================
 def update_stage(user_text: str) -> str:
     text = user_text.strip().lower()
@@ -354,6 +357,23 @@ if not st.session_state.messages:
     st.session_state.messages.append(
         {"role": "system", "content": system_prompt}
     )
+
+# ================== SCENARIO SELECTOR ==================
+SCENARIO_LABELS = {
+    "ORDERING": "Ordering coffee / food",
+    "TRANSPORT": "Buying tickets / transport",
+    "DIRECTIONS": "Asking directions",
+}
+
+scenario_label = st.selectbox(
+    "Scenario",
+    list(SCENARIO_LABELS.values()),
+    index=list(SCENARIO_LABELS.keys()).index(st.session_state.scenario)
+)
+
+# map label -> key
+scenario = [k for k,v in SCENARIO_LABELS.items() if v == scenario_label][0]
+st.session_state.scenario = scenario
 
 # ================== USER INPUT ==================
 
