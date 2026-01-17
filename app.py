@@ -136,8 +136,8 @@ client = OpenAI()
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-st.title("Italian Conversation Practice 🇮🇹")
-st.write("Partner speaks Italian. Tutor helps when needed.")
+# st.title("Italian Conversation Practice 🇮🇹")
+# st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
@@ -669,7 +669,7 @@ st.markdown(
     /* Pin the scenario selectbox into the top bar */
     div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
       position: fixed !important;
-      top: calc(env(safe-area-inset-top, 0px) + 1px) !important;
+      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
       left: 12px !important;
       right: 12px !important;
       z-index: 6000 !important;
