@@ -11,6 +11,24 @@ import mimetypes
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
+# ================== ASSET URL BASE (for iPhone-safe rendering) ==================
+# Set ASSET_BASE_URL in Streamlit Secrets to something like:
+#   https://raw.githubusercontent.com/<github_user>/<repo>/main/
+# Then assets/avatars/... becomes a normal https URL instead of base64 data-URI.
+ASSET_BASE_URL = st.secrets.get('ASSET_BASE_URL', '').strip()
+
+def asset_url(rel_path: str) -> str | None:
+    """Return an absolute URL for an asset if ASSET_BASE_URL is set; otherwise None."""
+    if not rel_path or not ASSET_BASE_URL:
+        return None
+    base = ASSET_BASE_URL
+    if not base.endswith('/'):
+        base += '/'
+    # Ensure no leading slash in rel_path
+    rp = rel_path.lstrip('/')
+    return base + rp
+
+
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
     if not text:
@@ -111,12 +129,19 @@ scenario = st.selectbox(
 avatar_path = resolve_asset(AVATARS.get(scenario, ""))
 background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
 
+# Prefer https URLs for iPhone (Safari) rendering; fallback to local file -> data URI.
+avatar_url = asset_url(AVATARS.get(scenario, ''))
+background_url = asset_url(BACKGROUNDS.get(scenario, ''))
+
+
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
 # --- UI-only: Stage visuals ---
 
 background_uri = None
-if background_path:
+if background_url:
+    background_uri = background_url
+elif background_path:
     try:
         background_uri = img_file_to_data_uri(background_path)
     except Exception:
@@ -125,7 +150,9 @@ if background_path:
 stage_bg = f"url('{background_uri}')" if background_uri else "none"
 
 avatar_uri = None
-if avatar_path:
+if avatar_url:
+    avatar_uri = avatar_url
+elif avatar_path:
     try:
         avatar_uri = img_file_to_data_uri(avatar_path)
     except Exception:
