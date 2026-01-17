@@ -6,10 +6,105 @@ import tempfile
 import os
 import re
 import io
+
+# ================== ASSET HELPERS (Stage images) ==================
 import base64
-import streamlit.components.v1 as components
+import mimetypes
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    """Return a data: URI for an image file (jpg/png/webp)."""
+    mime, _ = mimetypes.guess_type(path)
+    if not mime:
+        # default; most of your backgrounds are jpg
+        mime = 'image/jpeg'
+    b64 = img_to_base64(path)
+    return f"data:{mime};base64,{b64}"
+
+def resolve_asset(rel_path: str) -> str | None:
+    """Resolve an asset path both locally and on Streamlit Cloud."""
+    if not rel_path:
+        return None
+    # direct
+    if os.path.exists(rel_path):
+        return rel_path
+    # relative to this file
+    try:
+        base = os.path.dirname(__file__)
+    except Exception:
+        base = os.getcwd()
+    cand = os.path.join(base, rel_path)
+    if os.path.exists(cand):
+        return cand
+    return None
+
+# Map scenario -> background/avatar. Adjust filenames if yours differ.
+STAGE_BACKGROUNDS = {
+    "☕ Ordering coffee / food": [
+        "assets/backgrounds/cafe.jpg",
+        "assets/backgrounds/cafe.jpeg",
+        "assets/backgrounds/cafe.png",
+        "assets/cafe.jpg",
+        "cafe.jpg",
+    ],
+    "🚆 Buying tickets / transport": [
+        "assets/backgrounds/transport.jpg",
+        "assets/backgrounds/transport.jpeg",
+        "assets/backgrounds/transport.png",
+        "assets/transport.jpg",
+        "transport.jpg",
+    ],
+    "🚶 Asking directions": [
+        "assets/backgrounds/directions.jpg",
+        "assets/backgrounds/directions.jpeg",
+        "assets/backgrounds/directions.png",
+        "assets/directions.jpg",
+        "directions.jpg",
+    ],
+}
+STAGE_AVATARS = {
+    "☕ Ordering coffee / food": [
+       # "assets/avatars/cafe.png",
+        "assets/avatars/cafe.jpg",
+        "assets/avatars/barista.png",
+        "assets/avatars/avatar_cafe.png",
+        "assets/cafe.png",
+        "cafe.png",
+    ],
+    "🚆 Buying tickets / transport": [
+      #  "assets/avatars/transport.png",
+        "assets/avatars/transport.jpg",
+        "assets/avatars/ticket_clerk.png",
+        "assets/transport.png",
+        "transport.png",
+    ],
+    "🚶 Asking directions": [
+        "assets/avatars/directions.png",
+       # "assets/avatars/directions.jpg",
+        "assets/avatars/local_person.png",
+        "assets/directions.png",
+        "directions.png",
+    ],
+}
+
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+
+
+def resolve_any(paths) -> str | None:
+    """Try multiple relative paths and return the first that exists."""
+    if not paths:
+        return None
+    if isinstance(paths, str):
+        paths = [paths]
+    for p in paths:
+        rp = resolve_asset(p)
+        if rp:
+            return rp
+    return None
 
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
@@ -38,74 +133,11 @@ def looks_non_italian_or_garbled(text: str) -> bool:
 load_dotenv()
 client = OpenAI()
 
-# ================== ASSET HELPERS (UI only) ==================
-def resolve_asset(path: str) -> str | None:
-    """Return an existing path, trying common image extensions if needed."""
-    if not path:
-        return None
-    if os.path.exists(path):
-        return path
-    # Try swapping .png <-> .jpg/.jpeg (useful if you renamed files)
-    base, ext = os.path.splitext(path)
-    candidates = []
-    if ext.lower() == '.png':
-        candidates = [base + '.jpg', base + '.jpeg']
-    elif ext.lower() in ('.jpg', '.jpeg'):
-        candidates = [base + '.png']
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
-
-def img_to_base64(path: str) -> str:
-    with open(path, 'rb') as f:
-        return base64.b64encode(f.read()).decode('utf-8')
-
-import mimetypes
-
-def img_file_to_data_uri(path: str) -> str:
-    """
-    Convert an image file to a data URI usable in HTML <img src="...">
-    """
-    mime_type, _ = mimetypes.guess_type(path)
-    if not mime_type:
-        mime_type = "image/png"  # safe default
-
-    b64 = img_to_base64(path)
-    return f"data:{mime_type};base64,{b64}"
-
-
-# ================== USER PRONUNCIATION (UI only) ==================
-def speak_italian(text: str) -> str | None:
-    """Generate Italian TTS for the given sentence and return a temp mp3 path."""
-    if not text or not text.strip():
-        return None
-    audio_path = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp:
-            audio_path = tmp.name
-        speech = client.audio.speech.create(
-            model='gpt-4o-mini-tts',
-            voice='alloy',
-            input=text.strip()
-        )
-        with open(audio_path, 'wb') as f:
-            f.write(speech.read())
-        return audio_path
-    except Exception:
-        # keep app running even if TTS fails
-        if audio_path and os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-            except Exception:
-                pass
-        return None
-
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-#st.title("Italian Conversation Practice 🇮🇹")
-#st.write("Partner speaks Italian. Tutor helps when needed.")
+st.title("Italian Conversation Practice 🇮🇹")
+st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
@@ -115,22 +147,6 @@ scenario = st.selectbox(
         "🚶 Asking directions"
     ]
 )
-
-# ================== SCENARIO VISUALS (UI only) ==================
-AVATARS = {
-    '☕ Ordering coffee / food': 'assets/avatars/barista.png',
-    '🚆 Buying tickets / transport': 'assets/avatars/ticket_clerk.png',
-    '🚶 Asking directions': 'assets/avatars/local_person.png',
-}
-
-BACKGROUNDS = {
-    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.jpg',
-    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.jpg',
-    '🚶 Asking directions': 'assets/backgrounds/directions.jpg',
-}
-
-avatar_path = resolve_asset(AVATARS.get(scenario, ''))
-background_path = resolve_asset(BACKGROUNDS.get(scenario, ''))
 
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
@@ -371,7 +387,7 @@ if not st.session_state.messages:
 
 import io
 
-st.subheader("🎙️ Speak (optional)")
+# st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
@@ -585,258 +601,148 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-### ================== DISPLAY (SPLIT: STAGE 60% + PANEL 40%) ==================
+# ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
-# Build data-URIs for the stage images (kept local so it works on Streamlit Cloud)
-background_uri = None
-if background_path:
-    try:
-        background_uri = img_file_to_data_uri(background_path)
-    except Exception:
-        background_uri = None
+# --- Resolve stage assets based on selected scenario ---
+background_path = resolve_any(STAGE_BACKGROUNDS.get(scenario, ""))
+avatar_path = resolve_any(STAGE_AVATARS.get(scenario, ""))
 
-avatar_uri = None
-if avatar_path:
-    try:
-        avatar_uri = img_file_to_data_uri(avatar_path)
-    except Exception:
-        avatar_uri = None
+background_uri = img_file_to_data_uri(background_path) if background_path else None
+avatar_uri = img_file_to_data_uri(avatar_path) if avatar_path else None
 
-# iOS Safari viewport height fix: use innerHeight so "60vh" doesn't drift when the URL bar shows/hides.
-components.html(
-    """
-    <script>
-(function(){
-  function qs(sel, root){ return (root||document).querySelector(sel); }
-
-  function relocate(){
-    const stage = document.getElementById('stage-root');
-    const panel = document.getElementById('panel-root');
-    if(!stage || !panel) return;
-
-    // Streamlit wraps each element in a container. We want the *Streamlit element container*
-    // that contains our stage markup, then move all subsequent Streamlit element containers
-    // into panel-root.
-    const shell = stage.closest('[data-testid="stElementContainer"], .element-container');
-    if(!shell) return;
-
-    let node = shell.nextElementSibling;
-    const moved=[];
-    while(node){
-      const nxt = node.nextElementSibling;
-      // Don't move Streamlit's menu/header etc; only move element containers.
-      if(node.matches('[data-testid="stElementContainer"], .element-container')){
-        panel.appendChild(node);
-        moved.push(node);
-      }
-      node = nxt;
-    }
-
-    // Make sure panel scroll works even after moves
-    panel.style.overflowY = 'auto';
-  }
-
-  // Run now + after layout settles
-  setTimeout(relocate, 0);
-  setTimeout(relocate, 200);
-  setTimeout(relocate, 800);
-
-  // Keep relocating on any Streamlit rerender
-  const bc = qs('section.main div.block-container');
-  if(bc){
-    const obs = new MutationObserver(()=>{ relocate(); });
-    obs.observe(bc, {childList:true, subtree:true});
-  }
-})();
-</script>
-    """,
-    height=0,
-)
+bg_img_html = f"<img class='stage-bg-img' src='{background_uri}' alt='stage'/>" if background_uri else ""
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar'/>" if avatar_uri else ""
 
 st.markdown(
     f"""
     <style>
-      /* --- Global --- */
-      :root {{
-        /* iOS Safari viewport fix: JS sets --vh to 1% of innerHeight */
-        --vh: 1vh;
-      }}
+    html, body {{
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }}
+    header[data-testid='stHeader'] {{ display: none; }}
+    footer {{ display: none; }}
 
-      html, body {{
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background: #0b0f16;
-        overflow: hidden; /* we'll manage scrolling inside the interaction panel */
-      }}
+    /* Stage: fixed top 60% */
+    .stage {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 60vh;
+      overflow: hidden;
+      z-index: 10;
+      background: #000;
+    }}
+    .stage-bg-img {{
+      position: absolute;
+      inset: 0;
+      width: 100vw;
+      height: 60vh;
+      object-fit: cover;
+      display: block;
+      z-index: 10;
+    }}
+    .stage-overlay {{
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
+      z-index: 20;
+      pointer-events: none;
+    }}
+    .stage-topbar {{
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 78px;
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      z-index: 40;
+      pointer-events: none;
+    }}
 
-      /* Hide Streamlit header/footer chrome */
-      header[data-testid='stHeader'] {{ display: none; }}
-      footer {{ display: none; }}
+    /* Pin the scenario selectbox into the top bar */
+    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
+      position: fixed !important;
+      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+      left: 12px !important;
+      right: 12px !important;
+      z-index: 6000 !important;
+      margin: 0 !important;
+    }}
+    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {{
+      display: none !important;
+    }}
 
-      /* Stage (top 60%) */
-      .stage {{
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: calc(var(--vh) * 60);
-        /* Always keep stage behind the interaction panel/widgets */
-        z-index: 0;
-        pointer-events: none;
-        overflow: hidden;
-        background: #0b0f16;
-      }}
+    /* Avatar */
+    .avatar-float {{
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform: translate(-50%, -50%);
+      width: min(70vw, 520px);
+      height: 80%;
+      border: none;
+      background: transparent;
+      border-radius: 24px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+      z-index: 50;
+      pointer-events: none;
+    }}
 
-      /* Force all Streamlit widgets/content above the stage (Safari/iOS stacking quirks) */
-      section.main > div.block-container > div:not(.stage) {{
-        position: relative;
-        z-index: 50;
-      }}
-      .stage-bg-img {{
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center;
-        filter: saturate(1.05) contrast(1.02);
-        transform: translateZ(0);
-      }}
-
-      /* Dark gradient for readability */
-      .stage-shade {{
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.55));
-      }}
-
-      /* Avatar overlay */
-      .stage-avatar {{
-        position: absolute;
-        left: 50%;
-        top: 58%;
-        transform: translate(-50%, -50%);
-        width: min(72vw, 520px);
-        height: auto;
-        border: none;
-        background: transparent;
-        border-radius: 18px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-        pointer-events: none;
-      }}
-
-      /* Scenario selector sits inside the stage (top bar) */
-      div[data-testid='stSelectbox'] {{
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        right: 12px;
-        z-index: 60;
-        margin: 0 !important;
-      }}
-      div[data-testid='stSelectbox'] label {{ display: none; }}
-
-      /* Keep Streamlit's main container in normal flow (do NOT fix it).
-         We'll create our own fixed interaction panel wrapper below. */
-      section.main > div.block-container {{
-        padding-top: calc(var(--vh) * 60) !important; /* push content below stage */
-        max-width: 100% !important;
-      }}
-      @supports (height: 100svh) {{
-        section.main > div.block-container {{
-          padding-top: 60svh !important;
-        }}
-      }}
-
-      /* Interaction panel wrapper (bottom 40%) */
-      .interaction-panel {{
-        position: fixed;
-        left: 0;
-        right: 0;
-        top: calc(var(--vh) * 60);
-        height: calc(var(--vh) * 40);
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        padding: 16px 14px 18px 14px;
-        background: rgba(255,255,255,0.1);
-        border-top: 1px solid rgba(255,255,255,0.10);
-        z-index: 50;
-
-        /* DEBUG: show panel bounds */
-        border: 2px solid rgba(255, 0, 0, 0.85);
-      }}
-      @supports (height: 100svh) {{
-        .interaction-panel {{
-          top: 60svh;
-          height: 40svh;
-        }}
-      }}
-
-      /* Reduce extra whitespace */
-      .block-container {{ padding-bottom: 0 !important; }}
+    /* Interaction panel: bottom 40% */
+    section.main > div.block-container {{
+      position: fixed;
+      top: 60vh;
+      left: 0;
+      right: 0;
+      height: 40vh;
+      overflow-y: auto;
+      padding: 14px 14px 18px 14px !important;
+      background: rgba(255,255,255,0.94);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 100;
+      max-width: 100% !important;
+    }}
     </style>
 
-    <script>
-      // iOS Safari: make vh stable by using innerHeight
-      (function() {{
-        function setVh() {{
-          var vh = window.innerHeight * 0.01;
-          document.documentElement.style.setProperty('--vh', vh + 'px');
-        }}
-        setVh();
-        window.addEventListener('resize', setVh);
-        window.addEventListener('orientationchange', setVh);
-      }})();
-    </script>
-
-    <div class="stage">
-      {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
-      <div class="stage-shade"></div>
-      {f"<img class='stage-avatar' src='{avatar_uri}' />" if avatar_uri else ""}
+    <div class='stage'>
+      {bg_img_html}
+      <div class='stage-overlay'></div>
+      <div class='stage-topbar'></div>
+      {avatar_html}
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# ---------- Panel content (rendered into our fixed wrapper) ----------
-st.markdown("<div class='interaction-panel'>", unsafe_allow_html=True)
-
-if st.session_state.conversation:
-    turn = st.session_state.conversation[-1]
-
+for i, turn in enumerate(st.session_state.conversation):
     st.markdown(f"**You:** {turn['user']}")
-
-    if st.button('🔊 Listen (Italian pronunciation)', key='speak_user_latest'):
-        user_audio = speak_italian(turn['user'])
-        if user_audio and os.path.exists(user_audio):
-            st.audio(user_audio)
-
     st.markdown(f"**AI (Partner):** {turn['partner']}")
 
-    if turn.get('audio') and os.path.exists(turn['audio']):
-        st.audio(turn['audio'])
+    if turn["audio"] and os.path.exists(turn["audio"]):
+        st.audio(turn["audio"])
 
-    if st.button('Show English', key='translate_latest'):
-        if turn.get('translation') is None:
-            turn['translation'] = translate_to_english(turn['partner'])
+    if st.button("Show English", key=f"translate_{i}"):
+        if turn["translation"] is None:
+            turn["translation"] = translate_to_english(turn["partner"])
 
-    if turn.get('translation'):
+    if turn["translation"]:
         st.markdown(f"🟦 *English:* {turn['translation']}")
 
-    if turn.get('tutor'):
-        st.markdown('**Tutor:**')
-        st.markdown(turn['tutor'])
-else:
-    pass
+    if turn["tutor"]:
+        st.markdown("**Tutor:**")
+        st.markdown(turn["tutor"])
 
 # ================== RESET ==================
 if st.button("Reset Conversation"):
     for turn in st.session_state.conversation:
-        if turn.get("audio") and os.path.exists(turn["audio"]):
+        if turn["audio"] and os.path.exists(turn["audio"]):
             os.remove(turn["audio"])
     st.session_state.clear()
     st.stop()
-
-# Close fixed panel wrapper
-st.markdown("</div>", unsafe_allow_html=True)
