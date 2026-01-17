@@ -7,6 +7,53 @@ import os
 import re
 import io
 
+# ================== ASSET HELPERS (Stage images) ==================
+import base64
+import mimetypes
+
+def img_to_base64(path: str) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+def img_file_to_data_uri(path: str) -> str:
+    """Return a data: URI for an image file (jpg/png/webp)."""
+    mime, _ = mimetypes.guess_type(path)
+    if not mime:
+        # default; most of your backgrounds are jpg
+        mime = 'image/jpeg'
+    b64 = img_to_base64(path)
+    return f"data:{mime};base64,{b64}"
+
+def resolve_asset(rel_path: str) -> str | None:
+    """Resolve an asset path both locally and on Streamlit Cloud."""
+    if not rel_path:
+        return None
+    # direct
+    if os.path.exists(rel_path):
+        return rel_path
+    # relative to this file
+    try:
+        base = os.path.dirname(__file__)
+    except Exception:
+        base = os.getcwd()
+    cand = os.path.join(base, rel_path)
+    if os.path.exists(cand):
+        return cand
+    return None
+
+# Map scenario -> background/avatar. Adjust filenames if yours differ.
+STAGE_BACKGROUNDS = {
+    "☕ Ordering coffee / food": "assets/backgrounds/cafe.jpg",
+    "🚆 Buying tickets / transport": "assets/backgrounds/transport.jpg",
+    "🚶 Asking directions": "assets/backgrounds/directions.jpg",
+}
+STAGE_AVATARS = {
+    "☕ Ordering coffee / food": "assets/avatars/cafe.png",
+    "🚆 Buying tickets / transport": "assets/avatars/transport.png",
+    "🚶 Asking directions": "assets/avatars/directions.png",
+}
+
+
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
 def looks_non_italian_or_garbled(text: str) -> bool:
@@ -506,20 +553,12 @@ if user_input and user_input != st.session_state.last_user_input:
 
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
-# --- UI-only: Stage visuals (background + avatar). Use <img> for iPhone Safari reliability ---
-background_uri = None
-if background_path:
-    try:
-        background_uri = img_file_to_data_uri(background_path)
-    except Exception:
-        background_uri = None
+# --- Resolve stage assets based on selected scenario ---
+background_path = resolve_asset(STAGE_BACKGROUNDS.get(scenario, ""))
+avatar_path = resolve_asset(STAGE_AVATARS.get(scenario, ""))
 
-avatar_uri = None
-if avatar_path:
-    try:
-        avatar_uri = img_file_to_data_uri(avatar_path)
-    except Exception:
-        avatar_uri = None
+background_uri = img_file_to_data_uri(background_path) if background_path else None
+avatar_uri = img_file_to_data_uri(avatar_path) if avatar_path else None
 
 bg_img_html = f"<img class='stage-bg-img' src='{background_uri}' alt='stage'/>" if background_uri else ""
 avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar'/>" if avatar_uri else ""
@@ -563,8 +602,6 @@ st.markdown(
       z-index: 20;
       pointer-events: none;
     }}
-
-    /* Top bar background (inside stage) */
     .stage-topbar {{
       position: absolute;
       top: 0;
@@ -578,7 +615,7 @@ st.markdown(
       pointer-events: none;
     }}
 
-    /* Pin the scenario selectbox into the stage top bar */
+    /* Pin the scenario selectbox into the top bar */
     div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
       position: fixed !important;
       top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
@@ -591,7 +628,7 @@ st.markdown(
       display: none !important;
     }}
 
-    /* Avatar: centered within stage */
+    /* Avatar */
     .avatar-float {{
       position: absolute;
       left: 50%;
@@ -607,7 +644,7 @@ st.markdown(
       pointer-events: none;
     }}
 
-    /* Interaction panel: bottom 40% (internally scrollable) */
+    /* Interaction panel: bottom 40% */
     section.main > div.block-container {{
       position: fixed;
       top: 60vh;
