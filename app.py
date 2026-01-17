@@ -378,10 +378,10 @@ if audio_value is not None:
             final_audio_input = transcribed_text
 
     # Optional debug while testing
-    if transcribed_text:
-        st.caption(f"🎧 Heard: {transcribed_text}")
-    if final_audio_input and final_audio_input != transcribed_text:
-        st.caption(f"🛠️ Interpreted as: {final_audio_input}")
+    # if transcribed_text:
+      #  st.caption(f"🎧 Heard: {transcribed_text}")
+    # if final_audio_input and final_audio_input != transcribed_text:
+      #  st.caption(f"🛠️ Interpreted as: {final_audio_input}")
 
 # typed_input = st.text_input("You:")
 user_input = final_audio_input.strip() # if final_audio_input.strip() else typed_input.strip()
@@ -539,12 +539,12 @@ if st.session_state.conversation:
     if user_audio and os.path.exists(user_audio):
         st.audio(user_audio)
 
-    st.markdown(f"**AI (Partner):** {turn['partner']}")
+    st.markdown(f"**Partner:** {turn['partner']}")
 
     if turn["audio"] and os.path.exists(turn["audio"]):
         st.audio(turn["audio"])
 
-    if st.button("Show English", key="translate_latest"):
+    if st.button("Translate", key="translate_latest"):
         if turn["translation"] is None:
             turn["translation"] = translate_to_english(turn["partner"])
 
