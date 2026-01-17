@@ -620,7 +620,7 @@ st.markdown(
       /* Stage (top 60%) */
       .stage {{
         position: fixed;
-        top: 0;
+        top: 20;
         left: 0;
         right: 0;
         height: 60vh;
@@ -721,7 +721,7 @@ st.markdown(
 )
 
 # ---------- Panel content (inside the normal Streamlit layout) ----------
-st.subheader('Latest turn')
+#st.subheader('Latest turn')
 
 if st.session_state.conversation:
     turn = st.session_state.conversation[-1]
