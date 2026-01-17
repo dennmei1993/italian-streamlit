@@ -229,6 +229,9 @@ st.markdown(
 )
 
 # --- Interaction content (unchanged logic; just rendered in bottom panel) ---
+if "conversation" not in st.session_state:
+    st.session_state.conversation = []
+    
 for i, turn in enumerate(st.session_state.conversation):
     st.markdown(f"**You:** {turn['user']}")
     st.markdown(f"**AI (Partner):** {turn['partner']}")
