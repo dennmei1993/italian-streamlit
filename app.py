@@ -620,7 +620,7 @@ st.markdown(
       /* Stage (top 60%) */
       .stage {{
         position: fixed;
-        top: 20;
+        top: 0;
         left: 0;
         right: 0;
         height: 60vh;
@@ -689,7 +689,7 @@ st.markdown(
         position: fixed;
         left: 0;
         right: 0;
-        top: 60vh;
+        top: 70vh;
         height: 40vh;
         max-width: 100% !important;
         margin: 0 !important;
