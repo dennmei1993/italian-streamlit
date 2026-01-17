@@ -7,104 +7,7 @@ import os
 import re
 import io
 
-# ================== ASSET HELPERS (Stage images) ==================
-import base64
-import mimetypes
-
-def img_to_base64(path: str) -> str:
-    with open(path, 'rb') as f:
-        return base64.b64encode(f.read()).decode('utf-8')
-
-def img_file_to_data_uri(path: str) -> str:
-    """Return a data: URI for an image file (jpg/png/webp)."""
-    mime, _ = mimetypes.guess_type(path)
-    if not mime:
-        # default; most of your backgrounds are jpg
-        mime = 'image/jpeg'
-    b64 = img_to_base64(path)
-    return f"data:{mime};base64,{b64}"
-
-def resolve_asset(rel_path: str) -> str | None:
-    """Resolve an asset path both locally and on Streamlit Cloud."""
-    if not rel_path:
-        return None
-    # direct
-    if os.path.exists(rel_path):
-        return rel_path
-    # relative to this file
-    try:
-        base = os.path.dirname(__file__)
-    except Exception:
-        base = os.getcwd()
-    cand = os.path.join(base, rel_path)
-    if os.path.exists(cand):
-        return cand
-    return None
-
-# Map scenario -> background/avatar. Adjust filenames if yours differ.
-STAGE_BACKGROUNDS = {
-    "☕ Ordering coffee / food": [
-        "assets/backgrounds/cafe.jpg",
-        "assets/backgrounds/cafe.jpeg",
-        "assets/backgrounds/cafe.png",
-        "assets/cafe.jpg",
-        "cafe.jpg",
-    ],
-    "🚆 Buying tickets / transport": [
-        "assets/backgrounds/transport.jpg",
-        "assets/backgrounds/transport.jpeg",
-        "assets/backgrounds/transport.png",
-        "assets/transport.jpg",
-        "transport.jpg",
-    ],
-    "🚶 Asking directions": [
-        "assets/backgrounds/directions.jpg",
-        "assets/backgrounds/directions.jpeg",
-        "assets/backgrounds/directions.png",
-        "assets/directions.jpg",
-        "directions.jpg",
-    ],
-}
-STAGE_AVATARS = {
-    "☕ Ordering coffee / food": [
-       # "assets/avatars/cafe.png",
-        "assets/avatars/cafe.jpg",
-        "assets/avatars/barista.png",
-        "assets/avatars/avatar_cafe.png",
-        "assets/cafe.png",
-        "cafe.png",
-    ],
-    "🚆 Buying tickets / transport": [
-      #  "assets/avatars/transport.png",
-        "assets/avatars/transport.jpg",
-        "assets/avatars/ticket_clerk.png",
-        "assets/transport.png",
-        "transport.png",
-    ],
-    "🚶 Asking directions": [
-        "assets/avatars/directions.png",
-       # "assets/avatars/directions.jpg",
-        "assets/avatars/local_person.png",
-        "assets/directions.png",
-        "directions.png",
-    ],
-}
-
-
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-
-
-def resolve_any(paths) -> str | None:
-    """Try multiple relative paths and return the first that exists."""
-    if not paths:
-        return None
-    if isinstance(paths, str):
-        paths = [paths]
-    for p in paths:
-        rp = resolve_asset(p)
-        if rp:
-            return rp
-    return None
 
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
@@ -136,18 +39,62 @@ client = OpenAI()
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-# st.title("Italian Conversation Practice 🇮🇹")
-#st.write("Partner speaks Italian. Tutor helps when needed.")
+# ================== ASSET HELPERS (UI only) ==================
+def resolve_asset(path: str) -> str | None:
+    """
+    Resolve asset path and auto-fallback between .png / .jpg / .jpeg
+    """
+    if not path:
+        return None
+
+    if os.path.exists(path):
+        return path
+
+    base, ext = os.path.splitext(path)
+    ext = ext.lower()
+
+    if ext == ".png":
+        for e in (".jpg", ".jpeg"):
+            candidate = base + e
+            if os.path.exists(candidate):
+                return candidate
+
+    if ext in (".jpg", ".jpeg"):
+        candidate = base + ".png"
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+# ================== SCENARIO VISUALS (UI only) ==================
+
+AVATARS = {
+    "☕ Ordering coffee / food": "assets/avatars/barista.png",
+    "🚆 Buying tickets / transport": "assets/avatars/ticket_clerk.png",
+    "🚶 Asking directions": "assets/avatars/local_person.png",
+}
+
+BACKGROUNDS = {
+    "☕ Ordering coffee / food": "assets/backgrounds/cafe.jpg",
+    "🚆 Buying tickets / transport": "assets/backgrounds/transport.jpg",
+    "🚶 Asking directions": "assets/backgrounds/directions.jpg",
+}
+
+st.title("Italian Conversation Practice 🇮🇹")
+st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
-    "",
+    "Choose a scenario",
     [
         "☕ Ordering coffee / food",
         "🚆 Buying tickets / transport",
         "🚶 Asking directions"
-    ],
-    label_visibility="collapsed"
+    ]
 )
+
+avatar_path = resolve_asset(AVATARS.get(scenario, ""))
+background_path = resolve_asset(BACKGROUNDS.get(scenario, ""))
+
 # ================  Make English detection explicit =============
 def contains_english(text: str) -> bool:
     common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
@@ -387,7 +334,7 @@ if not st.session_state.messages:
 
 import io
 
-# st.subheader("🎙️ Speak (optional)")
+st.subheader("🎙️ Speak (optional)")
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
@@ -603,122 +550,110 @@ if user_input and user_input != st.session_state.last_user_input:
 
 # ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
-# --- Resolve stage assets based on selected scenario ---
-background_path = resolve_any(STAGE_BACKGROUNDS.get(scenario, ""))
-avatar_path = resolve_any(STAGE_AVATARS.get(scenario, ""))
+# --- UI-only: Stage visuals ---
+bg_b64 = None
+if background_path:
+    try:
+        bg_b64 = img_to_base64(background_path)
+    except Exception:
+        bg_b64 = None
 
-background_uri = img_file_to_data_uri(background_path) if background_path else None
-avatar_uri = img_file_to_data_uri(avatar_path) if avatar_path else None
+avatar_uri = None
+if avatar_path:
+    try:
+        avatar_uri = img_file_to_data_uri(avatar_path)
+    except Exception:
+        avatar_uri = None
 
-bg_img_html = f"<img class='stage-bg-img' src='{background_uri}' alt='stage'/>" if background_uri else ""
-avatar_html = f"<img class='avatar-float' src='{avatar_uri}' alt='avatar'/>" if avatar_uri else ""
+stage_bg = f"url('data:image/jpg;base64,{bg_b64}')" if bg_b64 else "none"
+avatar_html = f"<img class='avatar-float' src='{avatar_uri}' />" if avatar_uri else ""
 
 st.markdown(
     f"""
     <style>
     html, body {{
       height: 100%;
-      margin: 0;
-      padding: 0;
       overflow: hidden;
-      background: #000;
     }}
     header[data-testid='stHeader'] {{ display: none; }}
     footer {{ display: none; }}
 
-    /* Stage: fixed top 60% */
+    /* Make Streamlit main container become the interaction panel */
+    section.main > div.block-container {{
+      position: fixed;
+      top: 60vh;
+      left: 0;
+      right: 0;
+      height: 40vh;
+      overflow-y: auto;
+      padding: 14px 14px 18px 14px !important;
+      background: rgba(255,255,255,0.97);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 40;
+      max-width: 100% !important;
+    }}
+
+    /* Stage: top 60% */
     .stage {{
       position: fixed;
       top: 0;
       left: 0;
-      width: 100vw;
+      right: 0;
       height: 60vh;
-      height: 60dvh;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.22), rgba(0,0,0,0.55)),
+        {stage_bg};
+      background-size: cover;
+      background-position: center;
       overflow: hidden;
       z-index: 10;
-      background: #000;
     }}
-    .stage-bg-img {{
-      position: absolute;
-      inset: 0;
-      width: 100vw;
-      height: 60vh;
-      height: 60dvh;
-      object-fit: cover;
-      display: block;
-      z-index: 10;
-    }}
-    .stage-overlay {{
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
-      z-index: 20;
-      pointer-events: none;
-    }}
+
+    /* Scenario bar INSIDE the stage image */
     .stage-topbar {{
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       height: 78px;
-      background: rgba(255,255,255,0.86);
+      background: rgba(255,255,255,0.78);
       backdrop-filter: blur(6px);
       border-bottom: 1px solid rgba(0,0,0,0.06);
-      z-index: 40;
-      pointer-events: none;
+      z-index: 30;
     }}
 
-    /* Pin the scenario selectbox into the top bar */
-    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
-      position: fixed !important;
-      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
-      left: 12px !important;
-      right: 12px !important;
-      z-index: 6000 !important;
-      margin: 0 !important;
+    /* Pin selectbox into the stage-topbar area */
+    div[data-testid='stSelectbox'] {{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 31;
+      margin: 0;
     }}
-    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {{
-      display: none !important;
+    /* Hide the selectbox label to remove extra whitespace above */
+    div[data-testid='stSelectbox'] label {{
+      display: none;
     }}
 
-    /* Avatar */
+    /* Avatar inside stage */
     .avatar-float {{
       position: absolute;
       left: 50%;
-      top: 58%;
+      top: 62%;
       transform: translate(-50%, -50%);
-      width: min(70vw, 520px);
-      height: 80%;
+      width: min(62vw, 460px);
+      height: auto;
       border: none;
       background: transparent;
       border-radius: 24px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-      z-index: 50;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.26);
+      z-index: 20;
       pointer-events: none;
-    }}
-
-    /* Interaction panel: bottom 40% */
-    div[data-testid='stAppViewContainer'] section.main > div.block-container {{
-      position: fixed;
-      top: 60vh;
-      top: 60dvh;
-      left: 0;
-      right: 0;
-      height: 40vh;
-      height: calc(100dvh - 60dvh);
-      height: calc(100vh - 60vh);
-      overflow-y: auto;
-      padding: 14px 14px calc(18px + env(safe-area-inset-bottom, 0px)) 14px !important;
-      background: rgba(255,255,255,0.94);
-      border-top: 1px solid rgba(0,0,0,0.08);
-      z-index: 9999;
-      max-width: 100% !important;
     }}
     </style>
 
     <div class='stage'>
-      {bg_img_html}
-      <div class='stage-overlay'></div>
       <div class='stage-topbar'></div>
       {avatar_html}
     </div>
@@ -726,24 +661,27 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --- Interaction content (unchanged logic; just rendered in bottom panel) ---
+st.markdown("<div class='panel'>", unsafe_allow_html=True)
 for i, turn in enumerate(st.session_state.conversation):
     st.markdown(f"**You:** {turn['user']}")
     st.markdown(f"**AI (Partner):** {turn['partner']}")
 
-    if turn["audio"] and os.path.exists(turn["audio"]):
-        st.audio(turn["audio"])
+    if turn.get('audio') and os.path.exists(turn['audio']):
+        st.audio(turn['audio'])
 
     if st.button("Show English", key=f"translate_{i}"):
-        if turn["translation"] is None:
-            turn["translation"] = translate_to_english(turn["partner"])
+        if turn.get('translation') is None:
+            turn['translation'] = translate_to_english(turn['partner'])
 
-    if turn["translation"]:
+    if turn.get('translation'):
         st.markdown(f"🟦 *English:* {turn['translation']}")
 
-    if turn["tutor"]:
+    if turn.get('tutor'):
         st.markdown("**Tutor:**")
-        st.markdown(turn["tutor"])
+        st.markdown(turn['tutor'])
 
+st.markdown("</div>", unsafe_allow_html=True)
 # ================== RESET ==================
 if st.button("Reset Conversation"):
     for turn in st.session_state.conversation:
