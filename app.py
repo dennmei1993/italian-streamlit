@@ -435,7 +435,7 @@ section.main > div.block-container {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 14px 14px 18px 14px;
-  background: rgba(20, 22, 26, 0.92);
+  background: rgba(20, 22, 26, 0.2);
   border-top: 1px solid rgba(255,255,255,0.12);
   z-index: 20;
 }
