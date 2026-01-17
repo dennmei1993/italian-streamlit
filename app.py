@@ -446,7 +446,7 @@ st.markdown(
         height: calc(100vh - var(--stage-h));
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
-        background: rgba(10,14,22,0.92);
+        background: rgba(10,14,22,0.2);
         z-index: 20;
         padding: 14px 14px 26px 14px;
       }}
@@ -454,7 +454,7 @@ st.markdown(
       /* Give the Streamlit content a little breathing room in the panel */
       #panel-root .stMarkdown, #panel-root .stTextInput, #panel-root .stAudioInput,
       #panel-root .stButton, #panel-root .stAudio {{
-        color: rgba(255,255,255,0.2);
+        color: rgba(255,255,255,0.92);
       }}
     </style>
 
