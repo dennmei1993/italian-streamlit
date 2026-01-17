@@ -620,25 +620,25 @@ st.markdown(
     @supports (height: 100svh) {{ :root {{ --stage-h: 60svh; }} }}
     @supports (height: 100dvh) {{ :root {{ --stage-h: 60dvh; }} }}
 
-    html, body {
+    html, body {{
       height: 100%;
       margin: 0;
       padding: 0;
       background: #000;
-    }
-    header[data-testid='stHeader'] { display: none; }
-    footer { display: none; }
+    }}
+    header[data-testid='stHeader'] {{ display: none; }}
+    footer {{ display: none; }}
 
     /* IMPORTANT: avoid 'fixed' on block-container (iOS stacking issues).
        Instead, lock the main app viewport and position the panel inside it. */
-    div[data-testid='stAppViewContainer'] {
+    div[data-testid='stAppViewContainer'] {{
       height: 100vh;
       height: 100svh;
       height: 100dvh;
       overflow: hidden;
       background: #000;
-    }
-    section.main {
+    }}
+    section.main {{
       position: fixed;
       top: 0;
       left: 0;
@@ -648,10 +648,10 @@ st.markdown(
       padding: 0 !important;
       margin: 0 !important;
       background: transparent;
-    }
+    }}
 
     /* Stage: fixed top */
-    .stage {
+    .stage {{
       position: fixed;
       top: 0;
       left: 0;
@@ -660,8 +660,8 @@ st.markdown(
       overflow: hidden;
       z-index: 10;
       background: #000;
-    }
-    .stage-bg-img {
+    }}
+    .stage-bg-img {{
       position: absolute;
       inset: 0;
       width: 100vw;
@@ -669,17 +669,17 @@ st.markdown(
       object-fit: cover;
       display: block;
       z-index: 10;
-    }
-    .stage-overlay {
+    }}
+    .stage-overlay {{
       position: absolute;
       inset: 0;
       background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
       z-index: 20;
       pointer-events: none;
-    }
+    }}
 
     /* Scenario bar area (inside stage) */
-    .stage-topbar {
+    .stage-topbar {{
       position: absolute;
       top: 0;
       left: 0;
@@ -690,23 +690,23 @@ st.markdown(
       border-bottom: 1px solid rgba(0,0,0,0.06);
       z-index: 30;
       pointer-events: none;
-    }
+    }}
 
     /* Pin the scenario selectbox into the top bar */
-    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {
+    div[data-testid='stSelectbox'], div[class*='stSelectbox'] {{
       position: fixed !important;
       top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
       left: 12px !important;
       right: 12px !important;
       z-index: 6000 !important;
       margin: 0 !important;
-    }
-    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {
+    }}
+    div[data-testid='stSelectbox'] label, div[class*='stSelectbox'] label {{
       display: none !important;
-    }
+    }}
 
     /* Avatar */
-    .avatar-float {
+    .avatar-float {{
       position: absolute;
       left: 50%;
       top: 58%;
@@ -719,10 +719,10 @@ st.markdown(
       box-shadow: 0 12px 30px rgba(0,0,0,0.28);
       z-index: 50;
       pointer-events: none;
-    }
+    }}
 
     /* Interaction panel: bottom area inside main viewport */
-    section.main > div.block-container {
+    section.main > div.block-container {{
       position: absolute;
       top: var(--stage-h);
       left: 0;
@@ -735,12 +735,12 @@ st.markdown(
       border-top: 1px solid rgba(0,0,0,0.08);
       z-index: 9999;
       max-width: 100% !important;
-    }
+    }}
 
     /* Remove extra top whitespace inside the panel */
-    section.main > div.block-container > div {
+    section.main > div.block-container > div {{
       padding-top: 0 !important;
-    }
+    }}
     </style>
 
     <div class='stage'>
