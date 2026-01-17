@@ -550,9 +550,9 @@ if user_input and user_input != st.session_state.last_user_input:
         "translation": None
     })
 
-# ================== DISPLAY (FULL-SCREEN STAGE UI) ==================
+# ================== DISPLAY (SPLIT STAGE 60% + PANEL 40%) ==================
 
-# Build stage visuals (UI only)
+# Build stage visuals (UI only) — keep the same working base64 approach
 bg_b64 = None
 if background_path:
     try:
@@ -567,66 +567,77 @@ if avatar_path:
     except Exception:
         avatar_uri = None
 
-# Full-screen, non-scrolling stage. Widgets remain functional; only layout changes.
+# Render a fixed Stage (top 60%) and a fixed Interaction Panel (bottom 40%).
 st.markdown(
     f"""
     <style>
     html, body {{
       height: 100%;
+      margin: 0;
+      padding: 0;
       overflow: hidden;
     }}
-    /* Hide Streamlit chrome */
     header[data-testid='stHeader'] {{ display: none; }}
     footer {{ display: none; }}
-    /* Make the app itself the stage */
+
+    /* Remove Streamlit default page background (we draw our own stage) */
     .stApp {{
-      height: 100vh;
-      overflow: hidden;
-      background-image: {"url('data:image/jpg;base64," + bg_b64 + "')" if bg_b64 else 'none'};
-      background-size: cover;
-      background-position: center;
-      background-attachment: fixed;
+      background: transparent !important;
     }}
-    /* Top bar background */
-    .topbar-bg {{
+
+    /* Stage area: top 60% */
+    .stage {{
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      height: 78px;
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(6px);
-      z-index: 1000;
-      border-bottom: 1px solid rgba(0,0,0,0.06);
+      height: 60vh;
+      background-image: {{"url('data:image/jpg;base64," + bg_b64 + "')" if bg_b64 else 'none'}};
+      background-size: cover;
+      background-position: center;
+      overflow: hidden;
+      z-index: 10;
     }}
+    .stage::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
+      z-index: 11;
+      pointer-events: none;
+    }}
+
+    /* Scenario bar background (inside stage) */
+    .topbar-bg {{
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 78px;
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      z-index: 30;
+    }}
+
     /* Pin the scenario selectbox into the top bar */
     div[data-testid='stSelectbox'] {{
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      z-index: 1001;
-      margin: 0;
+      position: fixed !important;
+      top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+      left: 12px !important;
+      right: 12px !important;
+      z-index: 5000 !important;
+      margin: 0 !important;
     }}
-    /* Foreground conversation panel */
-    section.main > div.block-container {{
-      position: fixed;
-      left: 50%;
-      bottom: 16px;
-      transform: translateX(-50%);
-      width: min(940px, 94vw);
-      max-height: 46vh;
-      overflow-y: auto;
-      padding: 14px 16px 12px 16px;
-      background: rgba(255,255,255,0.90);
-      border-radius: 16px;
-      box-shadow: 0 18px 40px rgba(0,0,0,0.25);
+    div[data-testid='stSelectbox'] label {{
+      display: none !important;
     }}
-    /* Avatar layer inside the stage */
+
+    /* Avatar in stage */
     .avatar-float {{
       position: fixed;
       left: 50%;
-      top: 55%;
+      top: 32vh; /* centered within the 60vh stage */
       transform: translate(-50%, -50%);
       width: min(70vw, 520px);
       height: auto;
@@ -634,12 +645,35 @@ st.markdown(
       background: transparent;
       border-radius: 24px;
       box-shadow: 0 12px 30px rgba(0,0,0,0.28);
-      z-index: 900;
+      z-index: 40;
       pointer-events: none;
     }}
+
+    /* Interaction panel: bottom 40% (internally scrollable) */
+    section.main > div.block-container {{
+      position: fixed;
+      top: 60vh;
+      left: 0;
+      right: 0;
+      height: 40vh;
+      overflow-y: auto;
+      padding: 14px 14px 18px 14px !important;
+      background: rgba(255,255,255,0.94);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 100;
+      max-width: 100% !important;
+    }}
+
+    /* Reduce top spacing in the panel */
+    section.main > div.block-container .element-container:first-child {{
+      margin-top: 0 !important;
+    }}
     </style>
-    <div class='topbar-bg'></div>
-    {"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}
+
+    <div class='stage'>
+      <div class='topbar-bg'></div>
+    </div>
+    {{"<img class='avatar-float' src='" + avatar_uri + "' />" if avatar_uri else ""}}
     """,
     unsafe_allow_html=True,
 )
