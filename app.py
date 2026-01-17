@@ -123,9 +123,9 @@ AVATARS = {
 }
 
 BACKGROUNDS = {
-    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.png',
-    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.png',
-    '🚶 Asking directions': 'assets/backgrounds/directions.png',
+    '☕ Ordering coffee / food': 'assets/backgrounds/cafe.jpg',
+    '🚆 Buying tickets / transport': 'assets/backgrounds/transport.jpg',
+    '🚶 Asking directions': 'assets/backgrounds/directions.jpg',
 }
 
 avatar_path = resolve_asset(AVATARS.get(scenario, ''))
@@ -689,7 +689,7 @@ st.markdown(
         position: fixed;
         left: 0;
         right: 0;
-        top: 120vh;
+        top: 60vh;
         height: 40vh;
         max-width: 100% !important;
         margin: 0 !important;
