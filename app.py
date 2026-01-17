@@ -662,7 +662,6 @@ stage_html = f"""
     background: linear-gradient(rgba(0,0,0,0.18), rgba(0,0,0,0.55));
   }}
 
-  ===
   .avatar-img {{
     position: absolute;
     left: 50%;
@@ -676,7 +675,7 @@ stage_html = f"""
     pointer-events: none;
     z-index: 80;
   }}
-===
+
   /* Scenario selectbox pinned inside the stage */
   div[data-testid='stSelectbox'] {{
     position: fixed;
@@ -705,11 +704,14 @@ stage_html = f"""
   window.addEventListener('resize', __setVh);
 </script>
 
+===
 <div class="stage">
   {f"<img class='stage-bg-img' src='{background_uri}' />" if background_uri else ""}
   <div class="stage-overlay"></div>
   {f"<img class='avatar-img' src='{avatar_uri}' />" if avatar_uri else ""}
 </div>
+===
+
 """
 
 st.markdown(stage_html, unsafe_allow_html=True)
