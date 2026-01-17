@@ -103,8 +103,8 @@ def speak_italian(text: str) -> str | None:
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-st.title("Italian Conversation Practice 🇮🇹")
-st.write("Partner speaks Italian. Tutor helps when needed.")
+#st.title("Italian Conversation Practice 🇮🇹")
+#st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
     "Choose a scenario",
