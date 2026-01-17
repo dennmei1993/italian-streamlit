@@ -186,16 +186,16 @@ st.markdown(
       background: rgba(255,255,255,0.78);
       backdrop-filter: blur(6px);
       border-bottom: 1px solid rgba(0,0,0,0.06);
-      z-index: 30;
+      z-index: 2000;
     }}
 
     /* Pin selectbox into the stage-topbar area */
     div[data-testid='stSelectbox'] {{
       position: fixed;
-      top: 12px;
+      top: calc(env(safe-area-inset-top, 0px) + 10px);
       left: 12px;
       right: 12px;
-      z-index: 2100;
+      z-index: 5000;
       margin: 0;
     }}
     /* Hide the selectbox label to remove extra whitespace above */
