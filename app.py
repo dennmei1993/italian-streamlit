@@ -628,7 +628,7 @@ stage_html = f"""
     padding: 16px 14px 20px 14px !important;
     max-width: 100% !important;
     z-index: 200;
-    border-top: 2px solid rgba(255,0,0,0.10);
+    border-top: 6px solid rgba(255,0,0,1);
 
     /* Make panel clearly ABOVE stage */
     background: rgba(11, 15, 22, 0.98);
