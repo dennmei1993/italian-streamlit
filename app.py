@@ -140,7 +140,6 @@ with open("vocab.json", encoding="utf-8") as f:
 #st.write("Partner speaks Italian. Tutor helps when needed.")
 
 scenario = st.selectbox(
-    # "Choose a scenario",
     [
         "☕ Ordering coffee / food",
         "🚆 Buying tickets / transport",
