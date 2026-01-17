@@ -554,8 +554,8 @@ if st.session_state.conversation:
     if turn["tutor"]:
         st.markdown("**Tutor:**")
         st.markdown(turn["tutor"])
-else:
-    st.write("Say something to start.")
+# else:
+    # st.write("Say something to start.")
 
 
 # ================== RESET ==================
