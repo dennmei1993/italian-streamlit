@@ -689,7 +689,7 @@ st.markdown(
         position: fixed;
         left: 0;
         right: 0;
-        top: 80vh;
+        top: 120vh;
         height: 40vh;
         max-width: 100% !important;
         margin: 0 !important;
@@ -698,7 +698,7 @@ st.markdown(
         -webkit-overflow-scrolling: touch;
         background: rgba(11,15,22,0.92);
         border-top: 1px solid rgba(255,255,255,0.10);
-        z-index: 140;
+        z-index: 40;
       }}
       @supports (height: 100svh) {{
         section.main > div.block-container {{
