@@ -312,7 +312,7 @@ if not st.session_state.messages:
 import io
 
 # st.subheader("🎙️ Speak (optional)")
-# audio_value = st.audio_input("Record a voice message")
+audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
 final_audio_input = ""  # what we will actually send into your app flow (Mode A)
