@@ -559,9 +559,9 @@ if st.session_state.conversation:
 
 
 # ================== RESET ==================
-if st.button("Reset Conversation"):
-    for turn in st.session_state.conversation:
-        if turn["audio"] and os.path.exists(turn["audio"]):
-            os.remove(turn["audio"])
-    st.session_state.clear()
-    st.stop()
+# if st.button("Reset Conversation"):
+  #  for turn in st.session_state.conversation:
+   #     if turn["audio"] and os.path.exists(turn["audio"]):
+    #        os.remove(turn["audio"])
+    #st.session_state.clear()
+    #st.stop()
