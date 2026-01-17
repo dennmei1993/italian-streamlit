@@ -539,12 +539,12 @@ if st.session_state.conversation:
     if user_audio and os.path.exists(user_audio):
         st.audio(user_audio)
 
-    st.markdown(f"**AI (Partner):** {turn['partner']}")
+    st.markdown(f"**Partner:** {turn['partner']}")
 
     if turn["audio"] and os.path.exists(turn["audio"]):
         st.audio(turn["audio"])
 
-    if st.button("Show English", key="translate_latest"):
+    if st.button("Transalte", key="translate_latest"):
         if turn["translation"] is None:
             turn["translation"] = translate_to_english(turn["partner"])
 
