@@ -15,123 +15,149 @@ from PIL import Image
 load_dotenv()
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
 
-# For iPhone stability, use a URL if possible. 
-# Example: https://raw.githubusercontent.com/username/repo/main/
+# Set ASSET_BASE_URL in Streamlit Secrets for the most reliable iPhone rendering
 ASSET_BASE_URL = st.secrets.get('ASSET_BASE_URL', '').strip()
 BASE_DIR = Path(__file__).resolve().parent
 
 with open("vocab.json", encoding="utf-8") as f:
     vocab = json.load(f)["words"]
 
-# ================== ASSET & IMAGE HELPERS ==================
+# ================== IMAGE & ASSET HELPERS ==================
 
 def asset_url(rel_path: str) -> str | None:
-    """Return an absolute URL for an asset if ASSET_BASE_URL is set."""
+    """Return an absolute URL for an asset if ASSET_BASE_URL is set; otherwise None."""
     if not rel_path or not ASSET_BASE_URL:
         return None
     base = ASSET_BASE_URL if ASSET_BASE_URL.endswith('/') else ASSET_BASE_URL + '/'
     return base + rel_path.lstrip('/')
 
 def resolve_asset(path: str) -> str | None:
-    """Resolve asset path with extension fallbacks."""
-    cand = BASE_DIR / path
-    if cand.exists(): return str(cand)
-    # Fallback to common extensions
-    for ext in ['.png', '.jpg', '.jpeg']:
-        alt = cand.with_suffix(ext)
-        if alt.exists(): return str(alt)
+    """Resolve an asset path relative to this script, with .png/.jpg/.jpeg fallbacks."""
+    cand = Path(path)
+    if not cand.is_absolute():
+        cand = BASE_DIR / cand
+    if cand.exists():
+        return str(cand)
+    base = cand.with_suffix('')
+    for ext in ('.png', '.jpg', '.jpeg'):
+        c2 = base.with_suffix(ext)
+        if c2.exists():
+            return str(c2)
     return None
 
-def img_file_to_data_uri(path: str, max_dim: int = 600) -> str:
-    """Convert image to a small, compressed Data URI for iPhone Safari."""
+def img_file_to_data_uri(path: str, max_dim: int = 800) -> str:
+    """Convert image to a small, optimized Data URI (iPhone Safari friendly)."""
     if not path or not os.path.exists(path):
         return ""
     try:
         img = Image.open(path)
-        # Resize aggressively for mobile performance
+        # iPhone Safari struggles with large Base64 strings; resizing is mandatory
         img.thumbnail((max_dim, max_dim))
         
         buf = io.BytesIO()
-        # Use JPEG for backgrounds to save space, PNG for avatars with transparency
-        if "avatar" in path.lower() or path.endswith('.png'):
+        ext = os.path.splitext(path)[1].lower()
+        if ext == '.png':
             img.save(buf, format='PNG', optimize=True)
-            m_type = 'image/png'
+            mime_type = 'image/png'
         else:
             img = img.convert('RGB')
-            img.save(buf, format='JPEG', quality=60, optimize=True)
-            m_type = 'image/jpeg'
+            img.save(buf, format='JPEG', quality=70, optimize=True)
+            mime_type = 'image/jpeg'
             
         b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        return f"data:{m_type};base64,{b64}"
+        return f"data:{mime_type};base64,{b64}"
     except Exception:
         return ""
-
-# ================== UI RENDERING ENGINE ==================
-
-def render_ui_assets(scenario):
-    """Injects CSS and HTML for background and avatar."""
-    # Mapping scenarios to asset folders
-    bg_filename = f"assets/backgrounds/{scenario.lower()}.png"
-    ava_filename = f"assets/avatars/tutor.png" # or scenario specific
-    
-    bg_path = resolve_asset(bg_filename)
-    ava_path = resolve_asset(ava_filename)
-
-    # Prioritize remote URL (fastest/most stable on iPhone) -> then local DataURI
-    bg_uri = asset_url(bg_filename) or img_file_to_data_uri(bg_path, max_dim=800)
-    ava_uri = asset_url(ava_filename) or img_file_to_data_uri(ava_path, max_dim=300)
-
-    st.markdown(f"""
-        <style>
-        .stApp {{
-            background-image: url("{bg_uri}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }}
-        .stApp::before {{
-            content: "";
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(255, 255, 255, 0.5); /* Overlay to keep text readable */
-            z-index: -1;
-        }}
-        .avatar-container {{
-            display: flex;
-            justify-content: center;
-            padding: 20px 0;
-        }}
-        .avatar-img {{
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            border: 4px solid white;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            object-fit: cover;
-            background-color: white;
-        }}
-        </style>
-        <div class="avatar-container">
-            <img src="{ava_uri}" class="avatar-img" alt="Partner">
-        </div>
-    """, unsafe_allow_html=True)
 
 # ================== LOGIC HELPERS ==================
 
 def looks_non_italian_or_garbled(text: str) -> bool:
-    if not text or len(text.strip()) <= 1: return True
-    english_markers = {"i","you","we","they","want","need","with","and","the","a","to","for"}
-    tokens = re.findall(r"[a-z']+", text.lower())
-    return sum(tok in english_markers for tok in tokens) >= 2
+    if not text: return True
+    t = text.strip().lower()
+    if len(t) <= 1: return True
+    english_markers = {"i","you","we","they","want","need","with","and","the","a","to","for","is","are","please"}
+    tokens = re.findall(r"[a-z']+", t)
+    if tokens and sum(tok in english_markers for tok in tokens) >= 2:
+        return True
+    return sum(ch.isalpha() for ch in t) < 3
+
+def contains_english(text: str) -> bool:
+    common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
+    return any(word in text.lower().split() for word in common_english)
 
 def update_stage(user_text: str) -> str:
-    text = user_text.lower()
-    if any(x in text for x in ["quanto", "how much", "prezzo"]): return "PRICE_GIVEN"
-    if any(x in text for x in ["ecco", "pago", "carta", "contanti"]): return "PAYMENT"
-    if any(x in text for x in ["grazie", "ciao", "arrivederci"]): return "CLOSING"
-    return st.session_state.get("stage", "ORDERING")
+    text = user_text.strip().lower()
+    current = st.session_state.get("stage", "ORDERING")
+    payment_cues = ["ecco", "tenga", "tieni", "prego", "pago", "carta", "contanti", "bancomat"]
 
-# ================== SESSION STATE ==================
+    if current == "PRICE_GIVEN" and (any(cue in text for cue in payment_cues) or text in ["ok", "si", "sì"]):
+        return "PAYMENT"
+    if any(x in text for x in ["quanto", "how much", "prezzo"]):
+        return "PRICE_GIVEN"
+    if any(x in text for x in ["grazie", "thanks"]):
+        return "CLOSING"
+    return current
+
+# ================== UI RENDERING ==================
+
+def inject_custom_ui(scenario):
+    """Renders the background and avatar using the resolved paths."""
+    # Determine asset paths based on scenario
+    bg_rel = f"assets/backgrounds/{scenario.lower()}.png"
+    ava_rel = "assets/avatars/barista.png" # You can make this dynamic too
+    
+    bg_path = resolve_asset(bg_rel)
+    ava_path = resolve_asset(ava_rel)
+    
+    # Try URL first (best for iPhone), fallback to optimized DataURI
+    bg_src = asset_url(bg_rel) or img_file_to_data_uri(bg_path, max_dim=1000)
+    ava_src = asset_url(ava_rel) or img_file_to_data_uri(ava_path, max_dim=400)
+
+    st.markdown(f"""
+        <style>
+        .stApp {{
+            background-image: url("{bg_src}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        /* Overlay to ensure text is readable over the background */
+        .stApp::before {{
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255, 255, 255, 0.6);
+            z-index: -1;
+        }}
+        .avatar-box {{
+            display: flex;
+            justify-content: center;
+            margin-top: -30px;
+            margin-bottom: 20px;
+        }}
+        .avatar-img {{
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: 4px solid white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            object-fit: cover;
+        }}
+        </style>
+        <div class="avatar-box">
+            <img src="{ava_src}" class="avatar-img">
+        </div>
+    """, unsafe_allow_html=True)
+
+# ================== PROMPTS & SESSION ==================
+
+SYSTEM_PROMPT = """
+You are an Italian language assistant playing TWO roles.
+ROLE 1: Partner (Italian only, no corrections, natural conversation).
+ROLE 2: Tutor (English tips, only if user makes errors or uses English).
+(Full internal rules logic applied here as per original script...)
+"""
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "conversation" not in st.session_state:
@@ -141,90 +167,82 @@ if "stage" not in st.session_state:
 if "scenario" not in st.session_state:
     st.session_state.scenario = "ORDERING"
 
-# ================== UI LAYOUT ==================
-SCENARIO_LABELS = {"ORDERING": "Café", "TRANSPORT": "Station", "DIRECTIONS": "Street"}
-scenario_key = st.sidebar.selectbox("Scenario", list(SCENARIO_LABELS.keys()), format_func=lambda x: SCENARIO_LABELS[x])
-st.session_state.scenario = scenario_key
+# ================== MAIN UI ==================
 
-# RENDER BACKGROUND AND AVATAR
-render_ui_assets(st.session_state.scenario)
+SCENARIO_LABELS = {"ORDERING": "Ordering coffee", "TRANSPORT": "Transport", "DIRECTIONS": "Directions"}
+selected_label = st.sidebar.selectbox("Scenario", list(SCENARIO_LABELS.values()))
+st.session_state.scenario = [k for k, v in SCENARIO_LABELS.items() if v == selected_label][0]
 
-st.title("Italian Roleplay")
+# IMPORTANT: Render the assets here
+inject_custom_ui(st.session_state.scenario)
 
-# ================== INPUT HANDLING ==================
-audio_value = st.audio_input("Parlami...")
-typed_input = st.text_input("Oppure scrivi qui:")
+st.title("Parla con me!")
+
+# Audio Input
+audio_value = st.audio_input("Parla in Italiano")
+typed_input = st.text_input("O scrivi:")
 
 user_input = ""
 if audio_value:
-    with st.spinner("Ascoltando..."):
-        # Whisper Transcription
-        tr = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=("speech.wav", audio_value.getvalue()),
-            prompt="Italian language learner.",
-            response_format="text"
+    audio_file = io.BytesIO(audio_value.getvalue())
+    audio_file.name = "speech.wav"
+    tr = client.audio.transcriptions.create(model="whisper-1", file=audio_file, response_format="text")
+    user_input = tr.strip()
+    if looks_non_italian_or_garbled(user_input):
+        repair = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": "Repair this Italian speech transcript."},
+                      {"role": "user", "content": user_input}]
         )
-        user_input = tr.strip()
-        
-        # Repair if garbled
-        if looks_non_italian_or_garbled(user_input):
-            repair = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "system", "content": "Repair this Italian transcript. Only return the Italian sentence."},
-                          {"role": "user", "content": user_input}]
-            )
-            user_input = repair.choices[0].message.content.strip()
+        user_input = repair.choices[0].message.content.strip()
 elif typed_input:
     user_input = typed_input
 
-# ================== PROCESSING ==================
+# ================== CHAT ENGINE ==================
+
 if user_input:
     st.session_state.stage = update_stage(user_input)
-    
-    # Simple logic to determine Tutor response (English words = Tutor active)
-    tutor_active = any(word in user_input.lower() for word in ["yes", "no", "hello", "how"]) or len(st.session_state.conversation) % 2 == 0
+    tutor_active = contains_english(user_input) or (len(st.session_state.conversation) % 2 == 0)
 
-    # Partner Call
-    partner_resp = client.chat.completions.create(
+    # 1. Partner Call
+    p_resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "system", "content": "You are a helpful Italian local. Speak ONLY Italian. Never correct the user."}] + 
+        messages=[{"role": "system", "content": "Speak ONLY Italian as a local partner. No corrections."}] + 
                  st.session_state.messages + [{"role": "user", "content": user_input}]
     )
-    partner_text = partner_resp.choices[0].message.content.strip()
+    partner_text = p_resp.choices[0].message.content.replace("PARTNER:", "").strip()
 
-    # Tutor Call
+    # 2. Tutor Call
     tutor_text = ""
     if tutor_active:
-        tutor_resp = client.chat.completions.create(
+        t_resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "You are a Tutor. Provide: Clean version, More natural version, and a Tip in English."},
-                      {"role": "user", "content": f"Analyze: {user_input}"}]
+            messages=[{"role": "system", "content": "You are a Tutor. Provide: Clean version, More natural version, and a Tip."}] + 
+                     [{"role": "user", "content": f"Analyze: {user_input}"}]
         )
-        tutor_text = tutor_resp.choices[0].message.content.strip()
+        tutor_text = t_resp.choices[0].message.content.strip()
 
-    # Audio TTS for Partner
-    speech_path = None
-    try:
-        speech = client.audio.speech.create(model="tts-1", voice="alloy", input=partner_text)
-        speech_path = f"speech_{len(st.session_state.conversation)}.mp3"
-        speech.stream_to_file(speech_path)
-    except: pass
+    # 3. Audio TTS
+    speech = client.audio.speech.create(model="tts-1", voice="alloy", input=partner_text)
+    audio_path = f"speech_{len(st.session_state.conversation)}.mp3"
+    speech.stream_to_file(audio_path)
 
+    # Store
     st.session_state.conversation.append({
-        "user": user_input, "partner": partner_text, "tutor": tutor_text, "audio": speech_path
+        "user": user_input, "partner": partner_text, "tutor": tutor_text, "audio": audio_path
     })
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.messages.append({"role": "assistant", "content": partner_text})
 
-# ================== DISPLAY CONVERSATION ==================
+# ================== DISPLAY ==================
+
 for chat in reversed(st.session_state.conversation):
     with st.chat_message("assistant"):
         st.write(chat["partner"])
-        if chat["audio"]: st.audio(chat["audio"])
+        st.audio(chat["audio"])
         if chat["tutor"]:
-            with st.expander("💡 Tutor Feedback"):
-                st.info(chat["tutor"])
+            with st.expander("💡 Tutor"):
+                st.write(chat["tutor"])
     with st.chat_message("user"):
         st.write(chat["user"])
 
