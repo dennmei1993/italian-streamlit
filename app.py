@@ -725,7 +725,7 @@ st.markdown(
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding: 16px 14px 18px 14px;
-        background: rgba(11,15,22,0.92);
+        background: rgba(255,255,255,0.92);
         border-top: 1px solid rgba(255,255,255,0.10);
         z-index: 50;
 
