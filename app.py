@@ -13,11 +13,7 @@ from dotenv import load_dotenv
 # Optional (recommended): auto-stop recording after silence via streamlit-webrtc
 try:
     import numpy as np  # type: ignore
-    from streamlit_webrtc import (  # type: ignore
-        ClientSettings,
-        WebRtcMode,
-        webrtc_streamer,
-    )
+    from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
     _WEBRTC_AVAILABLE = True
 except Exception:
     _WEBRTC_AVAILABLE = False
@@ -418,12 +414,23 @@ if use_auto_stop and _WEBRTC_AVAILABLE:
         st.session_state.rec_wav_bytes = b""
         st.rerun()
 
+    RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
+
     ctx = webrtc_streamer(
-        key="mic",
-        mode=WebRtcMode.SENDONLY,
-        client_settings=ClientSettings(media_stream_constraints={"audio": True, "video": False}),
-        audio_receiver_size=1024,
+    key="mic",
+    mode=WebRtcMode.SENDONLY,
+    rtc_configuration=RTC_CONFIGURATION,
+    media_stream_constraints={"audio": True, "video": False},
+    audio_receiver_size=1024,
+    async_processing=True,
     )
+
+    if ctx.state.playing:
+        st.caption("✅ Mic connected. Speak now…")
+    else:
+        st.caption("⏳ Click Start. If it keeps spinning, your network may need TURN.")
+
 
     if ctx.audio_receiver and not st.session_state.rec_done:
         # Drain any available frames quickly (do not block long)

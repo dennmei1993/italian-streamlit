@@ -1,7 +1,7 @@
-streamlit
+streamlit>=1.39.0
+streamlit-webrtc>=0.48.1
+numpy
 openai
 python-dotenv
-streamlit-webrtc
-numpy
 av
 aiortc
