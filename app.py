@@ -197,8 +197,12 @@ if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
 
-def reset_conversation_state(clear_log: bool) -> None:
+def reset_conversation_state(clear_log=True):
     """Reset the in-session conversation state. Optionally clear the archived log."""
+
+    if clear_log:
+        st.session_state.conversation_log = []
+
     st.session_state.messages = []
     st.session_state.turn_count = 0
     st.session_state.last_user_input = ""
@@ -235,7 +239,8 @@ if nav_action:
 
     if nav_action == "new":
         # Start a fresh conversation
-        reset_conversation_state()
+        if "reset_conversation_state" in globals():
+            reset_conversation_state(clear_log=True)
         st.session_state.page = "conversation"
         _clear_query_params()
         st.rerun()
