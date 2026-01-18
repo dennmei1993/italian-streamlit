@@ -17,6 +17,7 @@ try:
         ClientSettings,
         WebRtcMode,
         webrtc_streamer,
+        RTCConfiguration
     )
     _WEBRTC_AVAILABLE = True
 except Exception:
@@ -418,11 +419,16 @@ if use_auto_stop and _WEBRTC_AVAILABLE:
         st.session_state.rec_wav_bytes = b""
         st.rerun()
 
+    RTC_CONFIGURATION = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )   
+    
     ctx = webrtc_streamer(
         key="mic",
         mode=WebRtcMode.SENDONLY,
         client_settings=ClientSettings(media_stream_constraints={"audio": True, "video": False}),
         audio_receiver_size=1024,
+        rtc_configuration=RTC_CONFIGURATION,
     )
 
     if ctx.audio_receiver and not st.session_state.rec_done:
