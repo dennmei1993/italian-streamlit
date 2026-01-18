@@ -348,40 +348,56 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 
 
 # ------------------ Scenario Panel ------------------
-# We render the scene (background + avatar overlay + icon bar) as ONE HTML block,
-# so the overlay works reliably on mobile.
-action = _get_query_param("action").lower().strip()
-if action in {"home", "new", "end"}:
-    if action == "home":
-        st.session_state.page = "home"
-    elif action == "new":
-        reset_conversation_state(clear_log=True)
-    elif action == "end":
-        archive_active_interaction()
-        st.session_state.page = "review"
-    _clear_query_params()
+# IMPORTANT:
+# Do NOT use HTML <a href="?..."></a> inside components.html() for navigation.
+# components.html renders in an iframe, and clicks will only change the iframe URL
+# (not Streamlit's main URL), so query-param actions won't reach Python.
+#
+# Use native Streamlit buttons for actions, and apply CSS to keep them in one row on mobile.
+
+st.markdown(
+    """
+    <style>
+      /* Keep 3 buttons in a single row even on narrow screens */
+      div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+      /* Make icon buttons compact */
+      div[data-testid="stButton"] > button {
+        padding: 0.45rem 0.65rem !important;
+        min-width: 0 !important;
+        font-size: 1.25rem !important;
+        border-radius: 14px !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+btn1, btn2, btn3 = st.columns(3, gap="small")
+with btn1:
+    go_home = st.button("🏠", key="nav_home", use_container_width=True)
+with btn2:
+    new_conv = st.button("🆕", key="nav_new", use_container_width=True)
+with btn3:
+    end_conv = st.button("⏹", key="nav_end", use_container_width=True)
+
+if go_home:
+    st.session_state.page = "home"
+    st.rerun()
+
+if new_conv:
+    reset_conversation_state(clear_log=True)
+    # stay on conversation page
+    st.rerun()
+
+if end_conv:
+    archive_active_interaction()
+    st.session_state.page = "review"
     st.rerun()
 
 bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
 av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
 bg_abs = _abs_asset_path(bg_rel)
 av_abs = _abs_asset_path(av_rel)
-
-# Use a tiny HTML block ONLY for the icon row. (Native st.columns() will stack on phones.)
-icon_row_html = """
-<style>
-  .iconbar {display:flex;gap:12px;justify-content:space-between;margin:0 0 10px 0;}
-  .iconbtn {flex:1;text-align:center;padding:10px 0;border-radius:12px;
-            border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);
-            color:#fff;text-decoration:none;font-size:22px;line-height:1;}
-</style>
-<div class="iconbar">
-  <a class="iconbtn" href="?action=home" title="Home">🏠</a>
-  <a class="iconbtn" href="?action=new" title="New Conversation">🆕</a>
-  <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
-</div>
-"""
-components.html(icon_row_html, height=64, scrolling=False)
 
 st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
