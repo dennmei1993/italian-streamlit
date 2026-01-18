@@ -9,155 +9,12 @@ import io
 import hashlib
 import base64
 import mimetypes
+import streamlit.components.v1 as components
 
 # ================== SETUP ==================
 load_dotenv()
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
-
-# ================== SCENARIO ASSETS ==================
-# File structure (as per your repo):
-#   assets/backgrounds/<name>.jpg
-#   assets/avatars/<name>.png
-STAGE_BACKGROUNDS = {
-    "Ordering coffee / food": [
-        "assets/backgrounds/cafe.jpg",
-    ],
-    "Buying tickets / transport": [
-        "assets/backgrounds/transport.jpg",
-    ],
-    "Asking directions": [
-        "assets/backgrounds/directions.jpg",
-    ],
-}
-
-STAGE_AVATARS = {
-    "Ordering coffee / food": [
-        "assets/avatars/barista.png",
-    ],
-    "Buying tickets / transport": [
-        "assets/avatars/ticket_clerk.png",
-    ],
-    "Asking directions": [
-        "assets/avatars/local_person.png",
-    ],
-}
-
-
-def _normalize_scenario_label(label: str) -> str:
-    """Strip leading emojis/symbols so labels match asset dict keys."""
-    s = (label or "").strip()
-    s = re.sub(r"^[^A-Za-z0-9]+", "", s).strip()
-    return s
-
-
-def _abs_asset_path(rel_path: str) -> str:
-    """Resolve asset paths relative to this file (Streamlit Cloud safe)."""
-    if not rel_path:
-        return ""
-    if os.path.isabs(rel_path):
-        return rel_path
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, rel_path)
-
-
-def _first_existing_path(paths: list[str]) -> str:
-    for rp in paths or []:
-        ap = _abs_asset_path(rp)
-        if os.path.exists(ap):
-            return ap
-    return ""
-
-
-def _file_to_data_uri(path_or_rel: str) -> str:
-    ap = _abs_asset_path(path_or_rel)
-    if not ap or not os.path.exists(ap):
-        return ""
-    mime, _ = mimetypes.guess_type(ap)
-    if not mime:
-        mime = "application/octet-stream"
-    with open(ap, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    return f"data:{mime};base64,{b64}"
-
-
-def render_scenario_background_and_avatar(scenario_label: str) -> None:
-    """Render background (fills most of scenario panel) + optional avatar overlay."""
-    key = _normalize_scenario_label(scenario_label)
-    bg = _first_existing_path(STAGE_BACKGROUNDS.get(key, []))
-    av = _first_existing_path(STAGE_AVATARS.get(key, []))
-
-    bg_uri = _file_to_data_uri(bg) if bg else ""
-    av_uri = _file_to_data_uri(av) if av else ""
-
-    if not bg_uri:
-        st.warning(
-            f"Scenario background not found for '{scenario_label}'. "
-            f"Expected one of: {STAGE_BACKGROUNDS.get(key, [])}"
-        )
-        return
-
-    st.markdown(
-        f"""
-        <div style="
-            position: relative;
-            width: 100%;
-            height: 42dvh;
-            height: 42vh;
-            min-height: 240px;
-            border-radius: 14px;
-            overflow: hidden;
-            background-image: url('{bg_uri}');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-        ">
-          {('<img src="' + av_uri + '" style="position:absolute; right:12px; bottom:12px; width: 96px; height: 96px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));" />') if av_uri else ''}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _file_to_data_uri(path: str) -> str:
-    """Convert a local image file to a data URI for HTML rendering.
-
-    Streamlit Cloud runs the app from the repo root, but to be safe on all
-    environments we resolve relative paths against this file's directory.
-    """
-    if not path:
-        return ""
-    try:
-        # Resolve relative paths against the directory containing app.py
-        abs_path = path
-        if not os.path.isabs(abs_path):
-            abs_path = os.path.join(os.path.dirname(__file__), abs_path)
-
-        if not os.path.exists(abs_path):
-            return ""
-
-        ext = os.path.splitext(abs_path)[1].lower().lstrip(".")
-        mime = {
-            "png": "image/png",
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "webp": "image/webp",
-        }.get(ext, "")
-        if not mime:
-            return ""
-
-        with open(abs_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-        return f"data:{mime};base64,{b64}"
-    except Exception:
-        return ""
-
-
-def get_scenario_assets(scenario_label: str) -> tuple[str, str]:
-    """Return (background_path, avatar_path) for the selected scenario label."""
-    bg = (STAGE_BACKGROUNDS.get(scenario_label) or [""])[0]
-    av = (STAGE_AVATARS.get(scenario_label) or [""])[0]
-    return bg, av
 
 # ================== HELPERS ==================
 
@@ -238,6 +95,32 @@ def parse_tutor_output(t: str) -> dict:
     return out
 
 
+def _abs_asset_path(rel_path: str) -> str:
+    """Resolve repo-relative asset paths reliably on Streamlit Cloud."""
+    if not rel_path:
+        return ""
+    if os.path.isabs(rel_path):
+        return rel_path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, rel_path)
+
+
+def _file_to_data_uri(rel_path: str) -> str:
+    """Return a data: URI for an image file, or empty string if missing."""
+    abs_path = _abs_asset_path(rel_path)
+    if not abs_path or (not os.path.exists(abs_path)):
+        return ""
+    mime, _ = mimetypes.guess_type(abs_path)
+    if not mime:
+        mime = "image/png"
+    try:
+        with open(abs_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return ""
+
+
 # ================== OPTIONAL VOCAB ==================
 vocab = []
 try:
@@ -252,7 +135,7 @@ if "page" not in st.session_state:
     st.session_state.page = "home"  # home | conversation | review
 
 if "scenario" not in st.session_state:
-    st.session_state.scenario = "Ordering coffee / food"
+    st.session_state.scenario = "☕ Ordering coffee / food"
 
 if "show_tutor" not in st.session_state:
     st.session_state.show_tutor = True
@@ -407,204 +290,90 @@ show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
-# Lock the overall page (no outer scroll). Only the interaction panel scrolls internally.
-# Use responsive viewport height (mobile-friendly). The full page is fixed; only the interaction panel scrolls.
-st.markdown(
-    """
-    <style>
-      /* Disable outer scrolling; only the interaction panel scrolls */
-      html, body { height: 100%; overflow: hidden; }
+# ------------------ Scenario Assets ------------------
+# Repo structure (as per your GitHub screenshots):
+#   assets/backgrounds/{cafe,directions,transport}.jpg
+#   assets/avatars/{barista,local_person,ticket_clerk}.png
+STAGE_BACKGROUNDS = {
+    "Ordering coffee / food": ["assets/backgrounds/cafe.jpg"],
+    "Buying tickets / transport": ["assets/backgrounds/transport.jpg"],
+    "Asking directions": ["assets/backgrounds/directions.jpg"],
+}
+STAGE_AVATARS = {
+    "Ordering coffee / food": ["assets/avatars/barista.png"],
+    "Buying tickets / transport": ["assets/avatars/ticket_clerk.png"],
+    "Asking directions": ["assets/avatars/local_person.png"],
+}
 
-      /* Make the Streamlit app container fill the viewport */
-      div[data-testid="stAppViewContainer"],
-      section.main {
-        height: 100vh;
-        height: 100dvh;
-        overflow: hidden;
-      }
 
-      /* Tighten padding so panels fit on mobile */
-      div[data-testid="stAppViewBlockContainer"],
-      .block-container {
-        height: 100%;
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-      }
+def _normalize_scenario_label(label: str) -> str:
+    """Normalize scenario labels so emoji/no-emoji variants still match asset dict keys."""
+    if not label:
+        return ""
+    # Remove leading emoji + spaces, e.g. "☕ Ordering coffee / food" -> "Ordering coffee / food"
+    return re.sub(r"^[^A-Za-z]*", "", label).strip()
 
-      /* Fixed layout wrapper anchored to the viewport */
-      .page-wrap {
-        height: 100vh;
-        height: 100dvh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        padding: 0.5rem 0.75rem;
-        box-sizing: border-box;
-      }
 
-      /* 60/40 split that won't stretch due to content */
-      .scenario-panel {
-        flex: 6 1 0;
-        min-height: 0;
-        overflow: hidden;
-        position: relative;
-      }
+def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
+    key = _normalize_scenario_label(scenario_label)
+    candidates = stage_map.get(key) or []
+    return candidates[0] if candidates else ""
 
-      /* Scenario media fills the panel */
-      .scenario-media {
-        position: absolute;
-        inset: 0;
-        border-radius: 12px;
-        overflow: hidden;
-      }
-      .scenario-media .bg {
-        position: absolute;
-        inset: 0;
-        background-size: cover;
-        background-position: center;
-        filter: saturate(1.05);
-      }
-      .scenario-badge {
-        position: absolute;
-        left: 10px;
-        top: 10px;
-        padding: 0.25rem 0.55rem;
-        background: rgba(0,0,0,0.45);
-        color: #fff;
-        border-radius: 999px;
-        font-size: 0.85rem;
-      }
-      .scenario-avatar {
-        position: absolute;
-        right: 10px;
-        bottom: 56px; /* keep clear of buttons */
-        width: 28%;
-        max-width: 180px;
-        height: auto;
-        filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
-        pointer-events: none;
-      }
 
-      /* Buttons sit at the bottom of the Scenario panel */
-      .scenario-controls {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 0.5rem;
-        background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
-        z-index: 5;
-        display: flex;
-        gap: 0.6rem;
-        justify-content: center;
-        align-items: center;
-      }
-      .scenario-controls .icon-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        text-decoration: none;
-        font-size: 1.35rem;
-        line-height: 1;
-        background: rgba(255,255,255,0.18);
-        border: 1px solid rgba(255,255,255,0.25);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-      }
-      .scenario-controls .icon-btn:active {
-        transform: translateY(1px);
-      }
-      .interaction-panel {
-        flex: 4 1 0;
-        min-height: 0;
-        overflow: hidden;
-      }
+"""Layout note
 
-      /* Only this area scrolls */
-      .interaction-scrollbox {
-        height: 100%;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-right: 0.5rem;
-        border-top: 1px solid rgba(49, 51, 63, 0.18);
-      }
+We keep the Conversation page layout simple and robust on Streamlit Cloud + mobile:
+- Scenario section at the top (background + avatar)
+- Interaction section below
 
-      /* iPhone safe area (prevents content sitting under the home indicator) */
-      @supports (padding: env(safe-area-inset-bottom)) {
-        .page-wrap { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
-      }
-
-      @media (max-width: 600px) {
-        .page-wrap { padding-left: 0.6rem; padding-right: 0.6rem; }
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-# Open the fixed layout wrapper
-st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
-
-# ------------------
-# Scenario panel (60%)
-# IMPORTANT: Streamlit markdown blocks don't share DOM across calls.
-# To reliably render a full-bleed background + overlay avatar + bottom icon bar,
-# we render the scenario panel as ONE HTML block.
-# ------------------
-
-# Handle icon actions via query params so the icon bar can live inside HTML.
-try:
-    _qp = st.query_params
-    _action = _qp.get("action", "")
-except Exception:
-    _qp = None
-    _action = ""
-
-if _action in {"home", "new", "end"}:
-    if _qp is not None:
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
-    if _action == "home":
-        st.session_state.page = "home"
-        st.rerun()
-    if _action == "new":
-        reset_conversation_state(clear_log=True)
-        st.rerun()
-    if _action == "end":
-        archive_active_interaction()
-        st.session_state.page = "review"
-        st.rerun()
-
-bg_path, av_path = get_scenario_assets(st.session_state.scenario)
-bg_uri = _file_to_data_uri(bg_path)
-av_uri = _file_to_data_uri(av_path)
-
-scenario_html = f"""
-<div class="scenario-panel">
-  <div class="scenario-media">
-    <div class="bg" style="background-image:url('{bg_uri or ''}');"></div>
-    {f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""}
-    <div class="scenario-badge">{st.session_state.scenario}</div>
-
-    <div class="scenario-controls">
-      <a class="icon-btn" href="?action=home" aria-label="Home">🏠</a>
-      <a class="icon-btn" href="?action=new" aria-label="New Conversation">🆕</a>
-      <a class="icon-btn" href="?action=end" aria-label="End Conversation">⏹</a>
-    </div>
-  </div>
-</div>
+We intentionally avoid "fixed" full-viewport CSS wrappers because Streamlit widgets
+cannot be reliably wrapped by HTML opened in earlier st.markdown() calls.
 """
 
-st.markdown(scenario_html, unsafe_allow_html=True)
-
-# Open interaction panel + scrollbox
-st.markdown('<div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
 
 
+# ------------------ Scenario Panel (fixed height) ------------------
+# IMPORTANT: Use native Streamlit rendering (st.image / st.button) here.
+# Streamlit does NOT allow HTML wrappers opened in one st.markdown() call to
+# "contain" widgets rendered later. Using native widgets keeps this reliable
+# across Streamlit Cloud + iPhone Safari.
+scenario_container = st.container()
+with scenario_container:
+    # Icon-only buttons in a single row
+    b1, b2, b3 = st.columns([1, 1, 1])
+    with b1:
+        if st.button("🏠", key="home_icon"):
+            st.session_state.page = "home"
+            st.rerun()
+    with b2:
+        if st.button("🆕", key="new_icon"):
+            reset_conversation_state(clear_log=True)
+            st.rerun()
+    with b3:
+        if st.button("⏹", key="end_icon"):
+            archive_active_interaction()
+            st.session_state.page = "review"
+            st.rerun()
+
+    st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+
+    bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
+    av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
+    bg_abs = _abs_asset_path(bg_rel)
+    av_abs = _abs_asset_path(av_rel)
+
+    if bg_rel and os.path.exists(bg_abs):
+        # Fill width; Streamlit will preserve aspect ratio.
+        st.image(bg_abs, use_container_width=True)
+    else:
+        st.warning(f"Scenario background not found: {bg_rel}")
+
+    if av_rel and os.path.exists(av_abs):
+        # Avatar shown as a smaller image below the background (reliable on mobile).
+        st.image(av_abs, width=140)
+
+
+# ------------------ Interaction Section ------------------
 # ================== SCENARIO STATE MACHINE ==================
 def update_stage(user_text: str) -> str:
     text = user_text.strip().lower()
@@ -926,5 +695,4 @@ if turn:
 else:
     st.info("Record a message to start.")
 
-# Close scrollbox + panels
-st.markdown('</div></div></div>', unsafe_allow_html=True)
+
