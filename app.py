@@ -804,9 +804,9 @@ If fully natural: Looks good 👍
     st.session_state.active_interaction = turn_data
 
     # Log this completed turn immediately for the Review page
-if "conversation_log" not in st.session_state:
+    if "conversation_log" not in st.session_state:
         st.session_state.conversation_log = []
-if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
+    if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
         st.session_state.conversation_log.append(dict(st.session_state.active_interaction))
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
