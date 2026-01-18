@@ -785,23 +785,23 @@ If fully natural: Looks good 👍
             user_audio = ""
 
     # Store as the active interaction (Interaction panel shows only this)
-turn_data = {
-    "user": user_input,
-    "partner": partner_text,
-    "tutor_raw": tutor_text,
-    "tutor_recommended": tutor_struct.get("recommended", ""),
-    "tutor_tip": tutor_struct.get("tip", ""),
-    "tutor_recommended_audio": recommended_audio,
-    "partner_audio": partner_audio,
-    "user_audio": user_audio,
-    "translation": None,
-}
+    turn_data = {
+        "user": user_input,
+        "partner": partner_text,
+        "tutor_raw": tutor_text,
+        "tutor_recommended": tutor_struct.get("recommended", ""),
+        "tutor_tip": tutor_struct.get("tip", ""),
+        "tutor_recommended_audio": recommended_audio,
+        "partner_audio": partner_audio,
+        "user_audio": user_audio,
+        "translation": None,
+    }
 
 # Always append to log immediately (guaranteed persistence)
-st.session_state.conversation_log.append(turn_data)
+    st.session_state.conversation_log.append(turn_data)
 
 # Also keep as the active interaction for display
-st.session_state.active_interaction = turn_data
+    st.session_state.active_interaction = turn_data
 
     # Log this completed turn immediately for the Review page
 if "conversation_log" not in st.session_state:
