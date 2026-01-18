@@ -360,12 +360,17 @@ st.markdown(
     <style>
       /* Keep 3 buttons in a single row even on narrow screens */
       div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
-      /* Make icon buttons compact */
+      /* Make icon buttons compact (do NOT use use_container_width=True) */
       div[data-testid="stButton"] > button {
         padding: 0.45rem 0.65rem !important;
         min-width: 0 !important;
         font-size: 1.25rem !important;
         border-radius: 14px !important;
+      }
+      /* Center buttons inside their columns */
+      div[data-testid="column"] div[data-testid="stButton"] {
+        display: flex;
+        justify-content: center;
       }
     </style>
     """,
@@ -374,11 +379,11 @@ st.markdown(
 
 btn1, btn2, btn3 = st.columns(3, gap="small")
 with btn1:
-    go_home = st.button("🏠", key="nav_home", use_container_width=True)
+    go_home = st.button("🏠", key="nav_home")
 with btn2:
-    new_conv = st.button("🆕", key="nav_new", use_container_width=True)
+    new_conv = st.button("🆕", key="nav_new")
 with btn3:
-    end_conv = st.button("⏹", key="nav_end", use_container_width=True)
+    end_conv = st.button("⏹", key="nav_end")
 
 if go_home:
     st.session_state.page = "home"
