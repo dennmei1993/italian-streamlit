@@ -666,7 +666,7 @@ if not st.session_state.messages:
 
 
 # ================== USER INPUT ==================
-audio_value = st.audio_input("Record a voice message")
+audio_value = st.audio_input("Press Mic sign to record a voice message, and press again to stop.")
 
 transcribed_text = ""
 final_audio_input = ""
