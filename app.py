@@ -11,6 +11,14 @@ import base64
 import mimetypes
 import streamlit.components.v1 as components
 
+# ================== PAGE CONFIG ==================
+st.set_page_config(
+    page_title="Parley",
+    page_icon="🗣️",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+
 # ================== SETUP ==================
 load_dotenv()
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
@@ -196,6 +204,22 @@ if "last_audio_hash" not in st.session_state:
 if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
+# ================== GLOBAL MOBILE TWEAKS ==================
+st.markdown(
+    """
+<style>
+@media (max-width: 480px) {
+  /* Reduce top whitespace on mobile so Home fits on one screen */
+  section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.6rem !important; }
+  h1 { font-size: 2.05rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
+  h2 { margin-top: 0.6rem !important; }
+  p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
+}
+</style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 def reset_conversation_state(clear_log: bool) -> None:
     """Reset the in-session conversation state. Optionally clear the archived log."""
@@ -365,8 +389,20 @@ st.markdown(
     p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
   }
 
-  /* Keep Streamlit horizontal blocks from wrapping in our button rows */
-  div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+  /* IMPORTANT: don't globally force nowrap; it can cause horizontal overflow on mobile. */
+
+  /* Force the NAV button row to stay on one line and stay grouped/centered.
+     We target the horizontal block that immediately follows the #navrow marker. */
+  #navrow + div[data-testid="stHorizontalBlock"] {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: center !important;
+    gap: 12px !important;
+  }
+  #navrow + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
 
   /* Make icon buttons compact */
   div[data-testid="stButton"] > button {
@@ -378,7 +414,7 @@ st.markdown(
   }
 
   /* Center buttons within their columns */
-  div[data-testid="column"] div[data-testid="stButton"] {
+  #navrow + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] {
     display: flex;
     justify-content: center;
   }
@@ -387,9 +423,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Use extra spacer columns so the 3 icon buttons stay grouped on mobile.
-# This avoids relying on fragile CSS sibling selectors.
-sp1, c1, c2, c3, sp2 = st.columns([2, 1, 1, 1, 2], gap="small")
+st.markdown('<div id="navrow"></div>', unsafe_allow_html=True)
+
+# Use 3 columns only; the CSS above constrains them to auto width and centers the group.
+c1, c2, c3 = st.columns(3, gap="small")
 with c1:
     go_home = st.button("🏠", key="nav_home")
 with c2:
