@@ -7,11 +7,157 @@ import os
 import re
 import io
 import hashlib
+import base64
+import mimetypes
 
 # ================== SETUP ==================
 load_dotenv()
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
+
+# ================== SCENARIO ASSETS ==================
+# File structure (as per your repo):
+#   assets/backgrounds/<name>.jpg
+#   assets/avatars/<name>.png
+STAGE_BACKGROUNDS = {
+    "Ordering coffee / food": [
+        "assets/backgrounds/cafe.jpg",
+    ],
+    "Buying tickets / transport": [
+        "assets/backgrounds/transport.jpg",
+    ],
+    "Asking directions": [
+        "assets/backgrounds/directions.jpg",
+    ],
+}
+
+STAGE_AVATARS = {
+    "Ordering coffee / food": [
+        "assets/avatars/barista.png",
+    ],
+    "Buying tickets / transport": [
+        "assets/avatars/ticket_clerk.png",
+    ],
+    "Asking directions": [
+        "assets/avatars/local_person.png",
+    ],
+}
+
+
+def _normalize_scenario_label(label: str) -> str:
+    """Strip leading emojis/symbols so labels match asset dict keys."""
+    s = (label or "").strip()
+    s = re.sub(r"^[^A-Za-z0-9]+", "", s).strip()
+    return s
+
+
+def _abs_asset_path(rel_path: str) -> str:
+    """Resolve asset paths relative to this file (Streamlit Cloud safe)."""
+    if not rel_path:
+        return ""
+    if os.path.isabs(rel_path):
+        return rel_path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, rel_path)
+
+
+def _first_existing_path(paths: list[str]) -> str:
+    for rp in paths or []:
+        ap = _abs_asset_path(rp)
+        if os.path.exists(ap):
+            return ap
+    return ""
+
+
+def _file_to_data_uri(path_or_rel: str) -> str:
+    ap = _abs_asset_path(path_or_rel)
+    if not ap or not os.path.exists(ap):
+        return ""
+    mime, _ = mimetypes.guess_type(ap)
+    if not mime:
+        mime = "application/octet-stream"
+    with open(ap, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+    return f"data:{mime};base64,{b64}"
+
+
+def render_scenario_background_and_avatar(scenario_label: str) -> None:
+    """Render background (fills most of scenario panel) + optional avatar overlay."""
+    key = _normalize_scenario_label(scenario_label)
+    bg = _first_existing_path(STAGE_BACKGROUNDS.get(key, []))
+    av = _first_existing_path(STAGE_AVATARS.get(key, []))
+
+    bg_uri = _file_to_data_uri(bg) if bg else ""
+    av_uri = _file_to_data_uri(av) if av else ""
+
+    if not bg_uri:
+        st.warning(
+            f"Scenario background not found for '{scenario_label}'. "
+            f"Expected one of: {STAGE_BACKGROUNDS.get(key, [])}"
+        )
+        return
+
+    st.markdown(
+        f"""
+        <div style="
+            position: relative;
+            width: 100%;
+            height: 42dvh;
+            height: 42vh;
+            min-height: 240px;
+            border-radius: 14px;
+            overflow: hidden;
+            background-image: url('{bg_uri}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        ">
+          {('<img src="' + av_uri + '" style="position:absolute; right:12px; bottom:12px; width: 96px; height: 96px; object-fit: contain; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));" />') if av_uri else ''}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _file_to_data_uri(path: str) -> str:
+    """Convert a local image file to a data URI for HTML rendering.
+
+    Streamlit Cloud runs the app from the repo root, but to be safe on all
+    environments we resolve relative paths against this file's directory.
+    """
+    if not path:
+        return ""
+    try:
+        # Resolve relative paths against the directory containing app.py
+        abs_path = path
+        if not os.path.isabs(abs_path):
+            abs_path = os.path.join(os.path.dirname(__file__), abs_path)
+
+        if not os.path.exists(abs_path):
+            return ""
+
+        ext = os.path.splitext(abs_path)[1].lower().lstrip(".")
+        mime = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "webp": "image/webp",
+        }.get(ext, "")
+        if not mime:
+            return ""
+
+        with open(abs_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return ""
+
+
+def get_scenario_assets(scenario_label: str) -> tuple[str, str]:
+    """Return (background_path, avatar_path) for the selected scenario label."""
+    bg = (STAGE_BACKGROUNDS.get(scenario_label) or [""])[0]
+    av = (STAGE_AVATARS.get(scenario_label) or [""])[0]
+    return bg, av
 
 # ================== HELPERS ==================
 
@@ -106,7 +252,7 @@ if "page" not in st.session_state:
     st.session_state.page = "home"  # home | conversation | review
 
 if "scenario" not in st.session_state:
-    st.session_state.scenario = "☕ Ordering coffee / food"
+    st.session_state.scenario = "Ordering coffee / food"
 
 if "show_tutor" not in st.session_state:
     st.session_state.show_tutor = True
@@ -287,11 +433,8 @@ st.markdown(
 
       /* Fixed layout wrapper anchored to the viewport */
       .page-wrap {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        height: 100vh;
+        height: 100dvh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -301,14 +444,81 @@ st.markdown(
 
       /* 60/40 split that won't stretch due to content */
       .scenario-panel {
-        height: 60%;
-        flex: 0 0 auto;
+        flex: 6 1 0;
         min-height: 0;
         overflow: hidden;
+        position: relative;
+      }
+
+      /* Scenario media fills the panel */
+      .scenario-media {
+        position: absolute;
+        inset: 0;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .scenario-media .bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        filter: saturate(1.05);
+      }
+      .scenario-badge {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        padding: 0.25rem 0.55rem;
+        background: rgba(0,0,0,0.45);
+        color: #fff;
+        border-radius: 999px;
+        font-size: 0.85rem;
+      }
+      .scenario-avatar {
+        position: absolute;
+        right: 10px;
+        bottom: 56px; /* keep clear of buttons */
+        width: 28%;
+        max-width: 180px;
+        height: auto;
+        filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
+        pointer-events: none;
+      }
+
+      /* Buttons sit at the bottom of the Scenario panel */
+      .scenario-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.5rem;
+        background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
+        z-index: 5;
+        display: flex;
+        gap: 0.6rem;
+        justify-content: center;
+        align-items: center;
+      }
+      .scenario-controls .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-size: 1.35rem;
+        line-height: 1;
+        background: rgba(255,255,255,0.18);
+        border: 1px solid rgba(255,255,255,0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+      .scenario-controls .icon-btn:active {
+        transform: translateY(1px);
       }
       .interaction-panel {
-        height: 40%;
-        flex: 0 0 auto;
+        flex: 4 1 0;
         min-height: 0;
         overflow: hidden;
       }
@@ -337,33 +547,62 @@ st.markdown(
 # Open the fixed layout wrapper
 st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 
-# --- Scenario panel (60%) ---
-st.markdown('<div class="scenario-panel">', unsafe_allow_html=True)
+# ------------------
+# Scenario panel (60%)
+# IMPORTANT: Streamlit markdown blocks don't share DOM across calls.
+# To reliably render a full-bleed background + overlay avatar + bottom icon bar,
+# we render the scenario panel as ONE HTML block.
+# ------------------
 
-top_a, top_b, top_c = st.columns([1, 1.3, 1.3])
-with top_a:
-    if st.button("⬅ Home", key="home_btn"):
+# Handle icon actions via query params so the icon bar can live inside HTML.
+try:
+    _qp = st.query_params
+    _action = _qp.get("action", "")
+except Exception:
+    _qp = None
+    _action = ""
+
+if _action in {"home", "new", "end"}:
+    if _qp is not None:
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+    if _action == "home":
         st.session_state.page = "home"
         st.rerun()
-
-with top_b:
-    if st.button("🆕 New Conversation", key="new_convo_btn"):
-        # Clear previous conversation log + current interaction.
+    if _action == "new":
         reset_conversation_state(clear_log=True)
         st.rerun()
-
-with top_c:
-    if st.button("⏹ End Conversation", key="end_convo_btn"):
-        # Archive anything currently visible, then go to review page.
+    if _action == "end":
         archive_active_interaction()
         st.session_state.page = "review"
         st.rerun()
 
-st.caption(f"Scenario: {st.session_state.scenario}")
-st.info("Scenario image placeholder (coming soon).")
+bg_path, av_path = get_scenario_assets(st.session_state.scenario)
+bg_uri = _file_to_data_uri(bg_path)
+av_uri = _file_to_data_uri(av_path)
 
-# Close scenario panel, open interaction panel + scrollbox
-st.markdown('</div><div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
+scenario_html = f"""
+<div class="scenario-panel">
+  <div class="scenario-media">
+    <div class="bg" style="background-image:url('{bg_uri or ''}');"></div>
+    {f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""}
+    <div class="scenario-badge">{st.session_state.scenario}</div>
+
+    <div class="scenario-controls">
+      <a class="icon-btn" href="?action=home" aria-label="Home">🏠</a>
+      <a class="icon-btn" href="?action=new" aria-label="New Conversation">🆕</a>
+      <a class="icon-btn" href="?action=end" aria-label="End Conversation">⏹</a>
+    </div>
+  </div>
+</div>
+"""
+
+st.markdown(scenario_html, unsafe_allow_html=True)
+
+# Open interaction panel + scrollbox
+st.markdown('<div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
 
 
 # ================== SCENARIO STATE MACHINE ==================
