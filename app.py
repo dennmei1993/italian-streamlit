@@ -358,6 +358,12 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 st.markdown(
     """
     <style>
+      /* Mobile: tighten overall top padding so Home fits better on one screen */
+      @media (max-width: 480px) {
+        section.main > div.block-container { padding-top: 1.0rem !important; }
+        h1 { font-size: 2.2rem !important; line-height: 1.05 !important; }
+      }
+
       /* Keep 3 buttons in a single row even on narrow screens */
       div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
       /* Make icon buttons compact (do NOT use use_container_width=True) */
@@ -371,6 +377,23 @@ st.markdown(
       div[data-testid="column"] div[data-testid="stButton"] {
         display: flex;
         justify-content: center;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Marker element so we can style JUST this nav row's horizontal block
+st.markdown('<div id="scenario-nav-row"></div>', unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <style>
+      /* Constrain the nav row width so the 3 icon buttons stay grouped on mobile */
+      #scenario-nav-row + div[data-testid="stHorizontalBlock"] {
+        max-width: 340px;
+        margin-left: auto;
+        margin-right: auto;
       }
     </style>
     """,
