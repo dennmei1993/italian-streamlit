@@ -273,14 +273,12 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
@@ -402,7 +400,37 @@ icon_row_html = """
   <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
 </div>
 """
-components.html(icon_row_html, height=64, scrolling=False)
+
+st.markdown("""
+<style>
+.iconbar {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 10px 0;
+}
+.iconbtn {
+  width: 56px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: white;
+  text-decoration: none;
+  font-size: 22px;
+}
+</style>
+
+<div class="iconbar">
+  <a class="iconbtn" href="?action=home">🏠</a>
+  <a class="iconbtn" href="?action=new">🆕</a>
+  <a class="iconbtn" href="?action=end">⏹</a>
+</div>
+""", unsafe_allow_html=True)
+
 
 st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
