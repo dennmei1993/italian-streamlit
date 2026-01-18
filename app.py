@@ -158,7 +158,7 @@ playback_my_sentence = bool(st.session_state.playback_my_sentence)
 #with col_nav_a:
  #   if st.button("⬅ Back", key="back_home"):
   #      st.session_state.page = "home"
-        st.rerun()
+   #     st.rerun()
 #with col_nav_b:
  #   if st.button("Reset conversation", key="reset_convo"):
   #      st.session_state.messages = []
