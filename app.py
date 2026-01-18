@@ -19,25 +19,25 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
 #   assets/backgrounds/<name>.jpg
 #   assets/avatars/<name>.png
 STAGE_BACKGROUNDS = {
-    "☕ Ordering coffee / food": [
+    "Ordering coffee / food": [
         "assets/backgrounds/cafe.jpg",
     ],
-    "🚆 Buying tickets / transport": [
+    "Buying tickets / transport": [
         "assets/backgrounds/transport.jpg",
     ],
-    "🚶 Asking directions": [
+    "Asking directions": [
         "assets/backgrounds/directions.jpg",
     ],
 }
 
 STAGE_AVATARS = {
-    "☕ Ordering coffee / food": [
+    "Ordering coffee / food": [
         "assets/avatars/barista.png",
     ],
-    "🚆 Buying tickets / transport": [
+    "Buying tickets / transport": [
         "assets/avatars/ticket_clerk.png",
     ],
-    "🚶 Asking directions": [
+    "Asking directions": [
         "assets/avatars/local_person.png",
     ],
 }
