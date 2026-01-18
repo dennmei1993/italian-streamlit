@@ -364,6 +364,57 @@ st.markdown(
         flex: 0 0 auto;
         min-height: 0;
         overflow: hidden;
+        position: relative;
+      }
+
+      /* Scenario media fills the panel */
+      .scenario-media {
+        position: absolute;
+        inset: 0;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .scenario-media .bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        filter: saturate(1.05);
+      }
+      .scenario-badge {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        padding: 0.25rem 0.55rem;
+        background: rgba(0,0,0,0.45);
+        color: #fff;
+        border-radius: 999px;
+        font-size: 0.85rem;
+      }
+      .scenario-avatar {
+        position: absolute;
+        right: 10px;
+        bottom: 56px; /* keep clear of buttons */
+        width: 28%;
+        max-width: 180px;
+        height: auto;
+        filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
+        pointer-events: none;
+      }
+
+      /* Buttons sit at the bottom of the Scenario panel */
+      .scenario-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.5rem;
+        background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
+        z-index: 5;
+      }
+      .scenario-controls [data-testid="stButton"] button {
+        font-size: 1.15rem;
+        padding: 0.35rem 0.2rem;
       }
       .interaction-panel {
         height: 40%;
@@ -399,51 +450,43 @@ st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 # --- Scenario panel (60%) ---
 st.markdown('<div class="scenario-panel">', unsafe_allow_html=True)
 
-# Buttons in a single row
-btn_a, btn_b, btn_c = st.columns([1, 1, 1])
-with btn_a:
-    if st.button("⬅ Home", key="home_btn", use_container_width=True):
-        st.session_state.page = "home"
-        st.rerun()
-with btn_b:
-    if st.button("🆕 New Conversation", key="new_convo_btn", use_container_width=True):
-        # Clear previous conversation log + current interaction.
-        reset_conversation_state(clear_log=True)
-        st.rerun()
-with btn_c:
-    if st.button("⏹ End Conversation", key="end_convo_btn", use_container_width=True):
-        # Archive anything currently visible, then go to review page.
-        archive_active_interaction()
-        st.session_state.page = "review"
-        st.rerun()
-
-st.caption(f"Scenario: {st.session_state.scenario}")
-
-# Scenario image (background + avatar)
+# Scenario image fills the entire panel; avatar is overlaid.
 bg_path, av_path = get_scenario_assets(st.session_state.scenario)
 bg_uri = _file_to_data_uri(bg_path)
 av_uri = _file_to_data_uri(av_path)
 
 if bg_uri:
-    # Use HTML so we can overlay the avatar on the background.
-    avatar_html = (
-        f"<img src='{av_uri}' style='position:absolute; right:10px; bottom:10px; "
-        "width:28%; max-width:180px; height:auto; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));'/>"
-        if av_uri else ""
-    )
-
+    avatar_html = f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""
     st.markdown(
         f"""
-        <!-- Fill remaining Scenario panel height under buttons/caption -->
-        <div style="position:relative; width:100%; height: calc(100% - 3.2rem); min-height: 140px;">
-          <div style="position:absolute; inset:0; background-image:url('{bg_uri}'); background-size:cover; background-position:center; border-radius:12px;"></div>
+        <div class='scenario-media'>
+          <div class='bg' style="background-image:url('{bg_uri}');"></div>
           {avatar_html}
+          <div class='scenario-badge'>{st.session_state.scenario}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 else:
     st.info("Scenario image not found. Add files under assets/backgrounds and assets/avatars.")
+
+# Bottom button row (icons only)
+st.markdown('<div class="scenario-controls">', unsafe_allow_html=True)
+btn_a, btn_b, btn_c = st.columns([1, 1, 1])
+with btn_a:
+    if st.button("🏠", key="home_btn", use_container_width=True):
+        st.session_state.page = "home"
+        st.rerun()
+with btn_b:
+    if st.button("🆕", key="new_convo_btn", use_container_width=True):
+        reset_conversation_state(clear_log=True)
+        st.rerun()
+with btn_c:
+    if st.button("⏹", key="end_convo_btn", use_container_width=True):
+        archive_active_interaction()
+        st.session_state.page = "review"
+        st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Close scenario panel, open interaction panel + scrollbox
 st.markdown('</div><div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
