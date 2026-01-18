@@ -154,21 +154,21 @@ show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
-col_nav_a, col_nav_b = st.columns([1, 2])
-with col_nav_a:
-    if st.button("⬅ Back", key="back_home"):
-        st.session_state.page = "home"
+#col_nav_a, col_nav_b = st.columns([1, 2])
+#with col_nav_a:
+ #   if st.button("⬅ Back", key="back_home"):
+  #      st.session_state.page = "home"
         st.rerun()
-with col_nav_b:
-    if st.button("Reset conversation", key="reset_convo"):
-        st.session_state.messages = []
-        st.session_state.conversation = []
-        st.session_state.turn_count = 0
-        st.session_state.last_user_input = ""
-        st.session_state.stage = "ORDERING"
-        st.rerun()
+#with col_nav_b:
+ #   if st.button("Reset conversation", key="reset_convo"):
+  #      st.session_state.messages = []
+   #     st.session_state.conversation = []
+    #    st.session_state.turn_count = 0
+     #   st.session_state.last_user_input = ""
+   #     st.session_state.stage = "ORDERING"
+    #    st.rerun()
 
-st.divider()
+#st.divider()
 
 # Conversation page header
 
