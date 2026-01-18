@@ -262,10 +262,7 @@ def reset_conversation_state(clear_log: bool) -> None:
 
 
 def archive_active_interaction() -> None:
-    """Move the current interaction into the archived log (if present)."""
-    if st.session_state.active_interaction:
-        st.session_state.conversation_log.append(st.session_state.active_interaction)
-        st.session_state.active_interaction = None
+    return  # already archived at creation time
 
 
 # ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
@@ -809,7 +806,7 @@ If fully natural: Looks good 👍
             user_audio = ""
 
     # Store as the active interaction (Interaction panel shows only this)
-    st.session_state.active_interaction = {
+    turn_data = {
         "user": user_input,
         "partner": partner_text,
         "tutor_raw": tutor_text,
@@ -820,6 +817,12 @@ If fully natural: Looks good 👍
         "user_audio": user_audio,
         "translation": None,
     }
+
+# Always append to log immediately (guaranteed persistence)
+st.session_state.conversation_log.append(turn_data)
+
+# Also keep as the active interaction for display
+st.session_state.active_interaction = turn_data
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
 turn = st.session_state.active_interaction
