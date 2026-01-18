@@ -239,7 +239,7 @@ if st.session_state.page == "home":
         "Choose a scenario",
         [
             "Ordering coffee / food",
-            "uying tickets / transport",
+            "Buying tickets / transport",
             "Asking directions",
         ],
         index=[
