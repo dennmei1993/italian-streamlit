@@ -209,15 +209,20 @@ def reset_conversation_state(clear_log=True):
     st.session_state.last_audio_hash = None
     st.session_state.stage = "ORDERING"
     st.session_state.active_interaction = None
-    if clear_log:
+
+
+
+def archive_active_interaction():
+    turn = st.session_state.get("active_interaction")
+    if not turn:
+        return
+
+    if "conversation_log" not in st.session_state:
         st.session_state.conversation_log = []
 
+    st.session_state.conversation_log.append(turn)
+    st.session_state.active_interaction = None
 
-def archive_active_interaction() -> None:
-    """Move the current interaction into the archived log (if present)."""
-    if st.session_state.active_interaction:
-        st.session_state.conversation_log.append(st.session_state.active_interaction)
-        st.session_state.active_interaction = None
 
 
 # ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
@@ -298,6 +303,8 @@ if st.session_state.page == "review":
     st.title("📜 Conversation Review")
     st.caption("Here is your full conversation history from the last session.")
 
+    log = st.session_state.get("conversation_log", [])
+
     col_a, col_b = st.columns([1, 2])
     with col_a:
         if st.button("⬅ Home", key="review_home"):
@@ -311,7 +318,8 @@ if st.session_state.page == "review":
 
     st.divider()
 
-    log = st.session_state.conversation_log[:]  # copy
+    # log = st.session_state.conversation_log[:]  # copy
+    log = st.session_state.get("conversation_log", [])
     if not log:
         st.info("No conversation history yet. Start a conversation and press End Conversation.")
         st.stop()
