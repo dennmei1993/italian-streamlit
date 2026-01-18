@@ -1,16 +1,153 @@
-import streamlit as st
-from openai import OpenAI
-from dotenv import load_dotenv
+import io
 import json
-import tempfile
 import os
 import re
-import io
+import tempfile
+
+import streamlit as st
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# ================== CONFIG / SETUP ==================
+load_dotenv()
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
+
+st.set_page_config(page_title="Language Conversation Tutor", page_icon="🗣️")
+
+# ================== OPTIONAL VOCAB LOAD ==================
+vocab_words: list[str] = []
+try:
+    with open("vocab.json", encoding="utf-8") as f:
+        vocab_words = json.load(f).get("words", []) or []
+except Exception:
+    vocab_words = []
+
+# ================== SCENARIOS (V1.1) ==================
+SCENARIOS = {
+    "cafe": {
+        "label": "☕ Ordering coffee / food",
+        "initial_stage": "ORDERING",
+        "stages": ["ORDERING", "PRICE_GIVEN", "PAYMENT", "CLOSING"],
+        "partner_prompt": """
+You are a friendly local conversation partner in an Italian cafe.
+
+Rules:
+- Speak ONLY Italian.
+- Do NOT teach. Do NOT correct the user.
+- If the user uses English, do NOT translate or restate their sentence; just respond naturally as if you understood.
+- Keep replies short and practical.
+
+Scenario stages:
+- ORDERING: ask/confirm the order.
+- PRICE_GIVEN: state the price (e.g., \"Sono tre euro.\").
+- PAYMENT: acknowledge payment politely; do NOT repeat the price; optionally offer receipt.
+- CLOSING: end politely.
+""".strip(),
+    },
+    "transport": {
+        "label": "🚆 Buying tickets / transport",
+        "initial_stage": "ASKING_ROUTE",
+        "stages": ["ASKING_ROUTE", "TICKET", "CONFIRMATION", "CLOSING"],
+        "partner_prompt": """
+You are a helpful local at a train/metro station in Italy.
+
+Rules:
+- Speak ONLY Italian.
+- Do NOT teach. Do NOT correct the user.
+- If the user uses English, do NOT translate or restate their sentence; just respond naturally as if you understood.
+- Keep replies short and practical.
+
+Scenario stages:
+- ASKING_ROUTE: help with destination/platform/which line.
+- TICKET: help with buying/validating ticket.
+- CONFIRMATION: confirm details (line, platform, direction, time).
+- CLOSING: end politely.
+""".strip(),
+    },
+    "directions": {
+        "label": "🚶 Asking directions",
+        "initial_stage": "ASKING",
+        "stages": ["ASKING", "CLARIFYING", "CONFIRMING", "CLOSING"],
+        "partner_prompt": """
+You are a helpful local giving directions in an Italian city.
+
+Rules:
+- Speak ONLY Italian.
+- Do NOT teach. Do NOT correct the user.
+- If the user uses English, do NOT translate or restate their sentence; just respond naturally as if you understood.
+- Keep replies short and practical.
+
+Scenario stages:
+- ASKING: ask where they want to go / respond to request.
+- CLARIFYING: ask one simple clarification if needed.
+- CONFIRMING: confirm route/landmarks.
+- CLOSING: end politely.
+""".strip(),
+    },
+}
+
+# ================== HELPERS ==================
+
+ENGLISH_HINT_WORDS = {
+    "the", "and", "is", "to", "for", "with", "want", "where", "how", "please",
+    "i", "you", "we", "they", "this", "that", "in", "on", "at", "from",
+    "can", "could", "would", "do", "does", "did", "thanks", "thank", "hello", "hi",
+}
 
 
-def speak_italian(text: str) -> str:
+def is_likely_english(text: str) -> bool:
+    if not text:
+        return False
+    tokens = re.findall(r"[a-z']+", text.lower())
+    if not tokens:
+        return False
+    hits = sum(tok in ENGLISH_HINT_WORDS for tok in tokens)
+    # ratio + minimum hits to avoid false positives
+    return hits >= 2 or (hits >= 1 and hits / max(1, len(tokens)) >= 0.25)
+
+
+def looks_non_target_or_garbled(text: str) -> bool:
+    """Simple heuristic: triggers repair when transcript seems off."""
+    if not text:
+        return True
+    t = text.strip().lower()
+    if len(t) <= 1:
+        return True
+    # too many English markers usually means dictation drift
+    tokens = re.findall(r"[a-z']+", t)
+    if tokens and sum(tok in ENGLISH_HINT_WORDS for tok in tokens) >= 2:
+        return True
+    # not enough letters
+    if sum(ch.isalpha() for ch in t) < 3:
+        return True
+    return False
+
+
+def safe_remove(path: str) -> None:
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+def cleanup_temp_files(keep_last: int = 20) -> None:
+    files = st.session_state.get("temp_audio_files", [])
+    if not files:
+        return
+    # keep only last N
+    if len(files) <= keep_last:
+        return
+    to_delete = files[:-keep_last]
+    st.session_state.temp_audio_files = files[-keep_last:]
+    for p in to_delete:
+        safe_remove(p)
+
+
+def synthesize_tts(text: str) -> str:
+    """Returns a temp mp3 path (caller should register it for cleanup)."""
     if not text or not text.strip():
         return ""
 
@@ -21,301 +158,182 @@ def speak_italian(text: str) -> str:
     speech = client.audio.speech.create(
         model="gpt-4o-mini-tts",
         voice="alloy",
-        input=text.strip()
+        input=text.strip(),
     )
 
     with open(audio_path, "wb") as f:
         f.write(speech.read())
 
+    st.session_state.temp_audio_files.append(audio_path)
+    cleanup_temp_files(keep_last=20)
     return audio_path
 
 
-def looks_non_italian_or_garbled(text: str) -> bool:
-    """Heuristic: triggers repair when transcript seems off."""
-    if not text:
+def translate_to_english(text: str) -> str:
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "Translate this Italian text into natural English."},
+            {"role": "user", "content": text},
+        ],
+    )
+    return resp.choices[0].message.content.strip()
+
+
+def should_show_tutor(turn_count: int, english: bool, repaired: bool) -> bool:
+    # V1.1: less noisy but still helpful
+    if english or repaired:
         return True
-    t = text.strip().lower()
-
-    # Too short and not useful
-    if len(t) <= 1:
-        return True
-
-    # Contains lots of English function words (common dictation drift)
-    english_markers = {"i","you","we","they","want","need","with","and","the","a","to","for","is","are","please"}
-    tokens = re.findall(r"[a-z']+", t)
-    if tokens and sum(tok in english_markers for tok in tokens) >= 2:
-        return True
-
-    # If it has very few Italian-looking characters and lots of random symbols
-    if sum(ch.isalpha() for ch in t) < 3:
-        return True
-
-    return False
+    return turn_count % 3 == 0
 
 
-# ================== SETUP ==================
-load_dotenv()
-client = OpenAI()
+# ================== STAGE MACHINES (V1.1 minimal) ==================
 
-with open("vocab.json", encoding="utf-8") as f:
-    vocab = json.load(f)["words"]
-
-# st.title("Italian Conversation Practice 🇮🇹")
-# st.write("Partner speaks Italian. Tutor helps when needed.")
-
-scenario = st.selectbox(
-    "Choose a scenario",
-    [
-        "☕ Ordering coffee / food",
-        "🚆 Buying tickets / transport",
-        "🚶 Asking directions"
-    ]
-)
-
-# ================  Make English detection explicit =============
-def contains_english(text: str) -> bool:
-    common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
-    text_lower = text.lower()
-    return any(word in text_lower.split() for word in common_english)
-
-
-# ================== SESSION STATE ==================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "conversation" not in st.session_state:
-    st.session_state.conversation = []
-
-if "turn_count" not in st.session_state:
-    st.session_state.turn_count = 0
-
-if "last_user_input" not in st.session_state:
-    st.session_state.last_user_input = ""
-
-if "stage" not in st.session_state:
-    st.session_state.stage = "ORDERING"
-
-# ================== SCENARIO STATE MACHINE ==================
-def update_stage(user_text: str) -> str:
+def update_stage_cafe(user_text: str, current: str) -> str:
     text = user_text.strip().lower()
-    current = st.session_state.stage
 
     payment_cues = [
         "ecco", "tenga", "tieni", "prego",
         "eccoti", "eccolo", "eccola",
         "pago", "posso pagare",
         "in contanti", "contanti",
-        "con la carta", "carta", "bancomat", "apple pay"
+        "con la carta", "carta", "bancomat", "apple pay",
     ]
 
-    # Only treat as payment handover when a price was just given
     if current == "PRICE_GIVEN" and any(cue in text for cue in payment_cues):
         return "PAYMENT"
 
-    if current == "PRICE_GIVEN" and text in ["ok", "va bene", "bene", "sì", "si"]:
-        return "PAYMENT"
-
-    if any(x in text for x in ["quanto", "how much"]):
+    if any(x in text for x in ["quanto", "how much", "costa", "prezzo"]):
         return "PRICE_GIVEN"
 
-    if text in ["si", "sì", "ok", "va bene"]:
+    if any(x in text for x in ["pago", "carta", "contanti", "bancomat", "apple pay"]):
         return "PAYMENT"
 
-    if any(x in text for x in ["grazie", "thanks"]):
+    if any(x in text for x in ["grazie", "arrivederci", "ciao"]):
         return "CLOSING"
 
-    return st.session_state.stage
+    return current
 
 
-# ================== TUTOR TRIGGER ==================
-def tutor_should_respond(user_text):
-    # English → ALWAYS tutor
-    if contains_english(user_text):
-        return True
+def update_stage_transport(user_text: str, current: str) -> str:
+    text = user_text.strip().lower()
 
-    # Italian mistake → ALWAYS tutor
-    if st.session_state.stage in ["ORDERING", "PRICE_GIVEN", "PAYMENT"]:
-        return True
+    if any(x in text for x in ["dove", "quale", "binario", "linea", "come", "per", "verso", "a "]):
+        return "ASKING_ROUTE"
 
-    # Otherwise, optional praise every 2 turns
-    return st.session_state.turn_count % 2 == 0
+    if any(x in text for x in ["biglietto", "ticket", "abbonamento", "validare", "convalidare", "macchinetta"]):
+        return "TICKET"
 
+    if any(x in text for x in ["ok", "va bene", "perfetto", "capito", "grazie"]):
+        return "CONFIRMATION" if current != "CLOSING" else current
 
+    if any(x in text for x in ["arrivederci", "ciao"]):
+        return "CLOSING"
 
-# ================== TRANSLATION ==================
-def translate_to_english(text: str) -> str:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Translate this Italian sentence into natural English."},
-            {"role": "user", "content": text}
-        ],
-        temperature=0
-    )
-    return response.choices[0].message.content.strip()
+    return current
 
 
-# ================== SYSTEM PROMPT ==================
-system_prompt = f"""
-You are an Italian language assistant playing TWO roles.
+def update_stage_directions(user_text: str, current: str) -> str:
+    text = user_text.strip().lower()
 
-GREETING RULE:
-- If the user greets (hi, hello, ciao):
-  Partner replies with a simple Italian greeting (e.g. "Ciao!")
+    if any(x in text for x in ["dove", "come", "per andare", "per arrivare", "direzione"]):
+        return "ASKING"
 
-==============================
-ROLE 1 — Conversation Partner
-==============================
-- Speak ONLY Italian
-- NEVER include English
-- NEVER correct the user's language
-- NEVER reformulate the user's sentence to fix errors
-- Respond naturally as if the meaning was understood
-- If the user makes a mistake, continue the conversation without correcting
-- Teaching and correction are STRICTLY forbidden for Partner
-- If the user’s message is unclear, ask a simple clarification question (Italian only), e.g. “Scusa, vuoi dire un caffè o un cappuccino?”
+    if any(x in text for x in ["scusi", "puoi ripetere", "che strada", "destra", "sinistra"]):
+        return "CLARIFYING"
 
-CRITICAL RULE (NO TRANSLATION):
+    if any(x in text for x in ["ok", "va bene", "capito", "perfetto", "grazie"]):
+        return "CONFIRMING" if current != "CLOSING" else current
 
-If the user uses English:
-- DO NOT translate the user's sentence into Italian
-- DO NOT restate the question in Italian
-- DO NOT mirror sentence structure
+    if any(x in text for x in ["arrivederci", "ciao"]):
+        return "CLOSING"
 
-Instead:
-- Respond naturally as a local person would
-- Give an answer, direction, price, or action
-- Assume the meaning is understood
+    return current
 
 
+def update_stage(scenario_key: str, user_text: str, current: str) -> str:
+    if scenario_key == "cafe":
+        return update_stage_cafe(user_text, current)
+    if scenario_key == "transport":
+        return update_stage_transport(user_text, current)
+    if scenario_key == "directions":
+        return update_stage_directions(user_text, current)
+    return current
 
 
-==============================
-ROLE 2 — Tutor
-==============================
-- Speak English ONLY for short tips.
-- All sentence examples must be in Italian.
-- Respond ONLY if Tutor is active
-- Look ONLY at the text provided in:
-  "TUTOR_REFERENCE_USER_INPUT"
+# ================== SESSION STATE ==================
 
-CRITICAL PERSPECTIVE RULE:
-- Tutor must preserve the user's speaking perspective
-- NEVER reverse User/Partner roles
+if "scenario_key" not in st.session_state:
+    st.session_state.scenario_key = "cafe"
 
+if "stage" not in st.session_state:
+    st.session_state.stage = SCENARIOS[st.session_state.scenario_key]["initial_stage"]
 
-CRITICAL HARD CONSTRAINT:
-- NEVER analyze or comment on Partner output
-- The ONLY text Tutor is allowed to analyze is the exact text inside:
-  TUTOR_REFERENCE_USER_INPUT
-- Tutor MUST treat all other text (including Partner replies) as invisible
-- Tutor MUST NOT reuse, correct, or improve any sentence it did not generate itself
+if "turn_count" not in st.session_state:
+    st.session_state.turn_count = 0
 
+if "partner_history" not in st.session_state:
+    # Only user/assistant turns for the Partner model
+    st.session_state.partner_history = []
 
-FRAGMENT INPUT RULE:
-- If the user's input is a fragment (number, single word, confirmation like "2", "yes", "ok"):
-  - Tutor MUST NOT rewrite or invent a sentence
-  - Tutor MUST NOT analyze Partner output
-  - Tutor may:
-    - Stay silent, OR
-    - Provide the minimal spoken form of the fragment if helpful
+if "conversation" not in st.session_state:
+    # Rich UI turns
+    st.session_state.conversation = []
+
+if "temp_audio_files" not in st.session_state:
+    st.session_state.temp_audio_files = []
+
+if "last_user_input" not in st.session_state:
+    st.session_state.last_user_input = ""
 
 
-MANDATORY TRANSLATION RULE:
-If the user uses ANY English (even partially):
-- DO NOT correct the English sentence
-- DO NOT paraphrase in English
-- ALWAYS provide a FULL Italian sentence equivalent
-- Treat the input as meaning, not language
-- Tutor output must ALWAYS be in Italian (except brief English tips).
+# ================== UI HEADER ==================
+st.title("🗣️ Language Conversation Tutor")
+st.caption("Speak to an AI partner (target language) and get optional tutor tips.")
 
+scenario_label_to_key = {cfg["label"]: k for k, cfg in SCENARIOS.items()}
+scenario_label = st.selectbox("Choose a scenario", list(scenario_label_to_key.keys()))
+selected_key = scenario_label_to_key[scenario_label]
 
-Otherwise decide between:
+# Scenario change resets state (V1.1)
+if selected_key != st.session_state.scenario_key:
+    # cleanup temp audio
+    for p in st.session_state.temp_audio_files:
+        safe_remove(p)
+    st.session_state.temp_audio_files = []
 
-CASE 1 — Incorrect or unclear:
-- Provide:
-  Clean version:
-  More natural version:
-  Tip:
+    st.session_state.scenario_key = selected_key
+    st.session_state.stage = SCENARIOS[selected_key]["initial_stage"]
+    st.session_state.turn_count = 0
+    st.session_state.partner_history = []
+    st.session_state.conversation = []
+    st.session_state.last_user_input = ""
 
-CASE 2 — Correct but unnatural:
-- Provide:
-  More natural version:
-  Tip:
+# Controls
+col_a, col_b = st.columns([1, 1])
+with col_a:
+    show_tutor = st.toggle("Show tutor tips", value=True)
+with col_b:
+    show_translation = st.toggle("Enable translation button", value=True)
 
-CASE 3 — Natural:
-- Say exactly: "Looks good 👍"
+playback_my_sentence = st.toggle("Play back my sentence (TTS)", value=False)
 
-- Be concise and encouraging
-- Do NOT explain grammar
+# Reset
+if st.button("Reset conversation"):
+    for p in st.session_state.temp_audio_files:
+        safe_remove(p)
+    st.session_state.clear()
+    st.rerun()
 
-Tutor format:
-- Clean version: <Italian sentence>
-- More natural version: <Italian sentence>
-- Tip: <short explanation>
+st.divider()
 
-==============================
-SCENARIO STATES (Cafe)
-==============================
-ORDERING:
-- Partner asks or confirms the order
-
-PRICE_GIVEN:
-- Partner states the price (e.g. "Sono tre euro.")
-
-PAYMENT:
-- Partner acknowledges payment politely (e.g. "Grazie.")
-- Partner thanks the user and optionally offers receipt
-- Partner MUST NOT repeat the price again
-- Partner moves to closing (Arrivederci)
-
-
-CLOSING:
-- Partner ends politely (e.g. "Arrivederci.")
-
-==============================
-GENERAL RULES
-==============================
-- Assume the user's intent
-- Use only simple vocabulary
-- If user uses English, treat it as Italian intent silently
-- Partner NEVER asks how much the customer wants to pay
-- Tutor NEVER replaces Partner
-
-==============================
-OUTPUT FORMAT (MANDATORY)
-==============================
-
-PARTNER:
-<Italian reply>
-
-OPTIONAL_TUTOR:
-<feedback or empty>
-
-==============================
-FINAL SELF-CHECK (SILENT)
-==============================
-- Partner is Italian only
-- Partner follows the scenario state
-- Partner never asks for payment amount
-- Tutor only appears if active
-Rewrite silently if any rule is violated.
-"""
-
-if not st.session_state.messages:
-    st.session_state.messages.append(
-        {"role": "system", "content": system_prompt}
-    )
-
-# ================== USER INPUT ==================
-
-import io
-
-# st.subheader("🎙️ Speak (optional)")
+# ================== USER INPUT (Audio) ==================
 audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
-final_audio_input = ""  # what we will actually send into your app flow (Mode A)
+user_input = ""
+repaired_flag = False
 
 if audio_value is not None:
     audio_bytes = audio_value.getvalue()
@@ -323,7 +341,6 @@ if audio_value is not None:
     audio_file.name = "speech.wav"
 
     try:
-        # 1) Primary transcription (tolerant + no translation)
         tr = client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
@@ -340,228 +357,179 @@ if audio_value is not None:
         st.warning(f"Audio transcription failed: {e}")
         transcribed_text = ""
 
-    # Default: use what we heard
-    final_audio_input = transcribed_text
+    user_input = transcribed_text
 
-    # 2) Automatic repair fallback (Mode A)
-    if looks_non_italian_or_garbled(transcribed_text):
+    # Repair fallback
+    if looks_non_target_or_garbled(transcribed_text):
         try:
-            vocab_hint = ""
-            try:
-                if "vocab" in globals() and isinstance(vocab, list) and vocab:
-                    vocab_hint = ", ".join(vocab[:120])
-            except Exception:
-                pass
-
+            vocab_hint = ", ".join(vocab_words[:120]) if vocab_words else ""
             repair_resp = client.chat.completions.create(
                 model="gpt-4o-mini",
                 temperature=0.2,
                 messages=[
-                    {"role": "system", "content": (
-                        "You repair a noisy speech-to-text transcript from an Italian learner. "
-                        "Return ONLY the most likely intended Italian sentence. "
-                        "Keep it short and practical for the scenario. "
-                        "Do NOT include explanations. Do NOT include English."
-                    )},
-                    {"role": "user", "content": (
-                        f"Scenario: {scenario}\n"
-                        f"Noisy transcript: {transcribed_text}\n"
-                        f"Allowed/simple vocab (optional): {vocab_hint}\n"
-                        "Output ONLY the repaired Italian sentence."
-                    )},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You repair a noisy speech-to-text transcript from an Italian learner. "
+                            "Return ONLY the most likely intended Italian sentence. "
+                            "Keep it short and practical for the scenario. "
+                            "Do NOT include explanations. Do NOT include English."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Scenario: {scenario_label}\n"
+                            f"Noisy transcript: {transcribed_text}\n"
+                            f"Allowed/simple vocab (optional): {vocab_hint}\n"
+                            "Output ONLY the repaired Italian sentence."
+                        ),
+                    },
                 ],
             )
             repaired = repair_resp.choices[0].message.content.strip()
             if repaired:
-                final_audio_input = repaired
+                user_input = repaired
+                repaired_flag = True
         except Exception:
-            final_audio_input = transcribed_text
+            user_input = transcribed_text
 
-    # Optional debug while testing
-    # if transcribed_text:
-      #  st.caption(f"🎧 Heard: {transcribed_text}")
-    if final_audio_input and final_audio_input != transcribed_text:
-        st.caption(f"🛠️ Interpreted as: {final_audio_input}")
+    if repaired_flag and user_input and user_input != transcribed_text:
+        st.caption(f"🛠️ Interpreted as: {user_input}")
 
-# typed_input = st.text_input("You:")
-user_input = final_audio_input.strip() # if final_audio_input.strip() else typed_input.strip()
+user_input = (user_input or "").strip()
 
-
+# ================== TURN PROCESSING ==================
 if user_input and user_input != st.session_state.last_user_input:
     st.session_state.last_user_input = user_input
     st.session_state.turn_count += 1
 
-    st.session_state.stage = update_stage(user_input)
-    tutor_active = tutor_should_respond(user_input)
+    scenario_key = st.session_state.scenario_key
+    current_stage = st.session_state.stage
+    new_stage = update_stage(scenario_key, user_input, current_stage)
+    st.session_state.stage = new_stage
 
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+    english_flag = is_likely_english(user_input)
+    tutor_active = show_tutor and should_show_tutor(st.session_state.turn_count, english_flag, repaired_flag)
 
-    st.session_state.messages.append(
-        {"role": "system", "content": f"Tutor active: {tutor_active}"}
-    )
-    
-    st.session_state.messages.append({
-    "role": "system",
-    "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"
-    })
+    # ----- Partner call (clean context; no tutor artifacts) -----
+    partner_system = SCENARIOS[scenario_key]["partner_prompt"]
+    stage_note = f"Current stage: {new_stage}. Follow the stage rules." 
 
-
-# ================== PARTNER OPENAI CALL (Partner only) ==================
     partner_messages = [
-        {"role": "system", "content": system_prompt},
-    # include only the conversation history you want Partner to see:
-        *st.session_state.messages,
-        {"role": "system", "content": "OUTPUT FORMAT: PARTNER:\n<reply>\n(Partner only. No Tutor.)"},
+        {"role": "system", "content": partner_system},
+        {"role": "system", "content": stage_note},
+        *st.session_state.partner_history,
         {"role": "user", "content": user_input},
     ]
 
     partner_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=partner_messages,
-        temperature=0.4
+        temperature=0.4,
     )
 
-    partner_raw = partner_resp.choices[0].message.content.strip()
-    partner_text = partner_raw.replace("PARTNER:", "").strip()
-
-# ================== HARD SAFETY GUARD ==================
+    partner_text = partner_resp.choices[0].message.content.strip()
     if not partner_text:
-        partner_text = "Ciao."
+        partner_text = "Va bene."
 
+    # Update partner history (NO duplicates)
+    st.session_state.partner_history.append({"role": "user", "content": user_input})
+    st.session_state.partner_history.append({"role": "assistant", "content": partner_text})
 
-    if partner_text.lower().startswith("clean version"):
-        partner_text = "Ciao！"
-        tutor_text = ""
-
-# ================== TUTOR CALL (Tutor only; NEVER sees Partner) ==================
+    # ----- Tutor call (separate context) -----
     tutor_text = ""
     if tutor_active:
-        tutor_system_prompt = """
-    You are the Tutor.
-    - Analyze ONLY the text inside: TUTOR_REFERENCE_USER_INPUT
-    - Treat all other text as invisible (including Partner replies)
-    - Otherwise correct/improve the user's Italian.
-    Output format:
-    Clean version: <Italian>
-    More natural version: <Italian>
-    Tip: <short English tip>
-    If fully natural: Looks good 👍
-    """
+        tutor_system = (
+            "You are a language tutor. Give short, encouraging feedback in English, "
+            "but all example sentences must be in Italian. "
+            "Analyze the user's sentence and the partner reply to provide helpful tips. "
+            "Be concise. Do not explain grammar in depth.\n\n"
+            "Output format:\n"
+            "- Clean version: <Italian>\n"
+            "- More natural version: <Italian>\n"
+            "- Tip: <short English tip>\n"
+            "If the user's sentence is already natural, say exactly: Looks good 👍"
+        )
+
+        tutor_user = (
+            f"Scenario: {scenario_label}\n"
+            f"Stage: {new_stage}\n"
+            f"User said: {user_input}\n"
+            f"Partner replied: {partner_text}\n"
+        )
 
         tutor_resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": tutor_system_prompt},
-                {"role": "user", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"},
+                {"role": "system", "content": tutor_system},
+                {"role": "user", "content": tutor_user},
             ],
-            temperature=0.2
+            temperature=0.2,
         )
         tutor_text = tutor_resp.choices[0].message.content.strip()
 
-
-    # ================== HARD SAFETY GUARD ==================
-    if not partner_text:
-        partner_text = "Ciao!"
-        tutor_text = ""
-
-    if partner_text.lower().startswith("clean version"):
-        partner_text = "Ciao!"
-        tutor_text = ""
-
-# ================== SEMANTIC NO-TRANSLATION GUARD ==================
-
-    if contains_english(user_input):
-    # If Partner is translating or restating the question, block it
-        if (
-            "?" in partner_text
-            and any(
-                kw in partner_text.lower()
-                for kw in ["dove", "quanto", "come", "quando", "perché"]
-            )
-        ):
-            partner_text = {
-                "TRANSPORT": "La fermata è lì davanti.",
-                "ORDERING": "Va bene.",
-                "DIRECTIONS": "È da questa parte.",
-            }.get(st.session_state.scenario, "Va bene.")
-
-
-# ================== PARTNER ANTI-CORRECTION GUARD ==================
-
-# If Partner output is a corrected version of user input, suppress it
-    normalized_user = user_input.lower().replace("è", "e")
-    normalized_partner = partner_text.lower().replace("è", "e")
-
-    if normalized_partner.strip() == normalized_user.strip():
-    # Partner accidentally corrected — fallback response
-        partner_text = "Va bene."
-
-
-    # ================== AUDIO ==================
-    audio_path = None
+    # ----- TTS -----
+    partner_audio_path = ""
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            audio_path = tmp.name
-
-        speech = client.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=partner_text
-        )
-
-        with open(audio_path, "wb") as f:
-            f.write(speech.read())
+        partner_audio_path = synthesize_tts(partner_text)
     except Exception:
-        audio_path = None
+        partner_audio_path = ""
 
-    # ================== STORE TURN ==================
-    st.session_state.conversation.append({
-        "user": user_input,
-        "partner": partner_text,
-        "tutor": tutor_text,
-        "audio": audio_path,
-        "translation": None
-    })
+    user_audio_path = ""
+    if playback_my_sentence:
+        try:
+            user_audio_path = synthesize_tts(user_input)
+        except Exception:
+            user_audio_path = ""
 
-# ================== DISPLAY (LATEST ONLY) ==================
-# st.subheader("Latest turn")
+    # ----- Store rich turn -----
+    st.session_state.conversation.append(
+        {
+            "user": user_input,
+            "partner": partner_text,
+            "tutor": tutor_text,
+            "partner_audio": partner_audio_path,
+            "user_audio": user_audio_path,
+            "translation": None,
+        }
+    )
 
-if st.session_state.conversation:
-    i = len(st.session_state.conversation) - 1
-    turn = st.session_state.conversation[-1]
+# ================== DISPLAY (LAST N TURNS) ==================
 
-    st.markdown(f"**You:** {turn['user']}")
+N_TURNS = 3
+turns = st.session_state.conversation[-N_TURNS:]
 
-    #if st.button("🔊 Listen (Italian pronunciation)", key=f"speak_user_{i}"):
-    user_audio = speak_italian(turn["user"])
-    if user_audio and os.path.exists(user_audio):
-        st.audio(user_audio)
+if turns:
+    for idx, turn in enumerate(turns, start=max(0, len(st.session_state.conversation) - N_TURNS)):
+        st.markdown(f"### Turn {idx + 1}")
 
-    st.markdown(f"**Partner:** {turn['partner']}")
+        st.markdown(f"**You:** {turn['user']}")
+        if turn.get("user_audio") and os.path.exists(turn["user_audio"]):
+            st.audio(turn["user_audio"])
 
-    if turn["audio"] and os.path.exists(turn["audio"]):
-        st.audio(turn["audio"])
+        st.markdown(f"**Partner:** {turn['partner']}")
+        if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
+            st.audio(turn["partner_audio"])
 
-    if st.button("Transalte", key="translate_latest"):
-        if turn["translation"] is None:
-            turn["translation"] = translate_to_english(turn["partner"])
+        if show_translation:
+            if st.button("Translate partner", key=f"translate_{idx}"):
+                if turn["translation"] is None:
+                    try:
+                        turn["translation"] = translate_to_english(turn["partner"])
+                    except Exception:
+                        turn["translation"] = "(Translation unavailable.)"
 
-    if turn["translation"]:
-        st.markdown(f"🟦 *English:* {turn['translation']}")
+            if turn.get("translation"):
+                st.markdown(f"🟦 *English:* {turn['translation']}")
 
-    if turn["tutor"]:
-        st.markdown("**Tutor:**")
-        st.markdown(turn["tutor"])
-# else:
-    # st.write("Say something to start.")
+        if turn.get("tutor"):
+            st.markdown("**Tutor:**")
+            st.markdown(turn["tutor"])
 
+        st.divider()
+else:
+    st.info("Record a message to start.")
 
-# ================== RESET ==================
-# if st.button("Reset Conversation"):
-  #  for turn in st.session_state.conversation:
-   #     if turn["audio"] and os.path.exists(turn["audio"]):
-    #        os.remove(turn["audio"])
-    #st.session_state.clear()
-    #st.stop()
+# Footer info
+st.caption(f"Scenario: {SCENARIOS[st.session_state.scenario_key]['label']} · Stage: {st.session_state.stage}")
