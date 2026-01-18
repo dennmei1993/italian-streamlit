@@ -785,7 +785,7 @@ If fully natural: Looks good 👍
             user_audio = ""
 
     # Store as the active interaction (Interaction panel shows only this)
-    turn_data = {
+turn_data = {
     "user": user_input,
     "partner": partner_text,
     "tutor_raw": tutor_text,
