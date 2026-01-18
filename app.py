@@ -398,21 +398,33 @@ st.markdown(
 
       /* Prevent accidental horizontal overflow on mobile */
       html, body { overflow-x: hidden; }
+
+      /* FORCE columns to stay on ONE ROW on mobile (Streamlit sometimes stacks them) */
+      div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 0.6rem !important;
+        justify-content: center !important;
+      }
+      div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 64px !important;
+      }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Keep the 3 nav buttons grouped + centered using spacer columns.
-# Layout: [spacer, home, new, end, spacer]
-sp_l, b_home, b_new, b_end, sp_r = st.columns([4, 1, 1, 1, 4], gap="small")
+# Keep the 3 nav buttons on ONE ROW (even on iOS Safari)
+nav_home_col, nav_new_col, nav_end_col = st.columns([1, 1, 1], gap="small")
 
-with b_home:
-    go_home = st.button("🏠", key="nav_home", use_container_width=True)
-with b_new:
-    new_conv = st.button("🆕", key="nav_new", use_container_width=True)
-with b_end:
-    end_conv = st.button("⏹", key="nav_end", use_container_width=True)
+with nav_home_col:
+    go_home = st.button("🏠", key="nav_home", use_container_width=False)
+with nav_new_col:
+    new_conv = st.button("🆕", key="nav_new", use_container_width=False)
+with nav_end_col:
+    end_conv = st.button("⏹", key="nav_end", use_container_width=False)
 
 if go_home:
     st.session_state.page = "home"
@@ -821,5 +833,4 @@ if turn:
                     st.markdown(f"**Tip:** {tip}")
 else:
     st.info("Record a message to start.")
-
 
