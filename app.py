@@ -320,57 +320,53 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
     return candidates[0] if candidates else ""
 
 
-"""Layout note
-
-We keep the Conversation page layout simple and robust on Streamlit Cloud + mobile:
-- Scenario section at the top (background + avatar)
-- Interaction section below
-
-We intentionally avoid "fixed" full-viewport CSS wrappers because Streamlit widgets
-cannot be reliably wrapped by HTML opened in earlier st.markdown() calls.
-"""
 
 
-
-# ------------------ Scenario Panel (fixed height) ------------------
-# IMPORTANT: Use native Streamlit rendering (st.image / st.button) here.
-# Streamlit does NOT allow HTML wrappers opened in one st.markdown() call to
-# "contain" widgets rendered later. Using native widgets keeps this reliable
-# across Streamlit Cloud + iPhone Safari.
+# ------------------ Scenario Panel ------------------
+# Render background + avatar as a single HTML block (reliable overlay),
+# and keep the action buttons in a single Streamlit row.
 scenario_container = st.container()
 with scenario_container:
-    # Icon-only buttons in a single row
-    b1, b2, b3 = st.columns([1, 1, 1])
-    with b1:
-        if st.button("🏠", key="home_icon"):
+    # Resolve assets
+    bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
+    av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
+    bg_uri = _file_to_data_uri(bg_rel) if bg_rel else ""
+    av_uri = _file_to_data_uri(av_rel) if av_rel else ""
+
+    # Background fills the scenario area (cover). Avatar overlays bottom-right.
+    # Height uses viewport units so it behaves nicely on mobile.
+    if bg_uri:
+        components.html(
+            f"""
+            <div style="position:relative; width:100%; height:48vh; border-radius:16px; overflow:hidden;">
+              <div style="position:absolute; inset:0; background-image:url('{bg_uri}'); background-size:cover; background-position:center;"></div>
+              {'<img src="'+av_uri+'" style="position:absolute; right:12px; bottom:12px; width:120px; max-width:35vw; height:auto;" />' if av_uri else ''}
+            </div>
+            """,
+            height=1
+        )
+    else:
+        st.warning(f"Scenario background not found: {bg_rel}")
+        if av_rel and not av_uri:
+            st.caption(f"Avatar not found: {av_rel}")
+
+    # Bottom row: icon-only buttons
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 6])
+    with c1:
+        if st.button("🏠", key="home_icon", help="Home"):
             st.session_state.page = "home"
             st.rerun()
-    with b2:
-        if st.button("🆕", key="new_icon"):
+    with c2:
+        if st.button("🆕", key="new_icon", help="New conversation"):
             reset_conversation_state(clear_log=True)
             st.rerun()
-    with b3:
-        if st.button("⏹", key="end_icon"):
+    with c3:
+        if st.button("⏹", key="end_icon", help="End & review"):
             archive_active_interaction()
             st.session_state.page = "review"
             st.rerun()
 
     st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
-
-    bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
-    av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
-    bg_abs = _abs_asset_path(bg_rel)
-    av_abs = _abs_asset_path(av_rel)
-
-    if bg_rel and os.path.exists(bg_abs):
-        # Fill width; Streamlit will preserve aspect ratio.
-        st.image(bg_abs, use_container_width=True)
-    else:
-        st.warning(f"Scenario background not found: {bg_rel}")
-
-    if av_rel and os.path.exists(av_abs):
-        # Avatar shown as a smaller image below the background (reliable on mobile).
-        st.image(av_abs, width=140)
 
 
 # ------------------ Interaction Section ------------------
