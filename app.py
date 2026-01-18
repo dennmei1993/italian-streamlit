@@ -346,11 +346,6 @@ st.markdown(
 
       /* Fixed layout wrapper anchored to the viewport */
       .page-wrap {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
         height: 100vh;
         height: 100dvh;
         display: flex;
@@ -362,11 +357,10 @@ st.markdown(
 
       /* 60/40 split that won't stretch due to content */
       .scenario-panel {
-        flex: 6 0 0;
+        flex: 6 1 0;
         min-height: 0;
         overflow: hidden;
         position: relative;
-        background: #111; /* fallback if images fail */
       }
 
       /* Scenario media fills the panel */
@@ -407,10 +401,8 @@ st.markdown(
       /* Buttons sit at the bottom of the Scenario panel */
       .scenario-controls {
         position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 0.5rem;
+right: 0;
+padding: 0.5rem;
         background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
         z-index: 5;
         display: flex;
@@ -437,10 +429,9 @@ st.markdown(
         transform: translateY(1px);
       }
       .interaction-panel {
-        flex: 4 0 0;
+        flex: 4 1 0;
         min-height: 0;
         overflow: hidden;
-        background: #fff;
       }
 
       /* Only this area scrolls */
@@ -507,7 +498,6 @@ scenario_html = f"""
 <div class="scenario-panel">
   <div class="scenario-media">
     <div class="bg" style="background-image:url('{bg_uri or ''}');"></div>
-    {"" if bg_uri else "<div style='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;opacity:0.9;'>Scenario image not found</div>"}
     {f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""}
     <div class="scenario-badge">{st.session_state.scenario}</div>
 
