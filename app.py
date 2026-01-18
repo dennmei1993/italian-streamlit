@@ -301,7 +301,7 @@ if st.session_state.page == "home":
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    st.divider()
+    #st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
