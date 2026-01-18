@@ -262,48 +262,78 @@ show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
 # Lock the overall page (no outer scroll). Only the interaction panel scrolls internally.
+# Use responsive viewport height (mobile-friendly). The full page is fixed; only the interaction panel scrolls.
 st.markdown(
-    f"""
+    """
     <style>
-      html, body {{ height: 100%; overflow: hidden; }}
-      section.main {{ height: 100vh; overflow: hidden; }}
-      .block-container {{ padding-top: 0.75rem; padding-bottom: 0.75rem; }}
+      html, body { height: 100%; overflow: hidden; }
+      section.main { height: 100vh; height: 100dvh; overflow: hidden; }
+      .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+
+      .page-wrap {
+        height: 100vh;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .scenario-panel {
+        flex: 6 0 0;          /* 60% */
+        min-height: 0;
+        overflow: hidden;     /* keep fixed */
+        padding-bottom: 0.25rem;
+      }
+      .interaction-panel {
+        flex: 4 0 0;          /* 40% */
+        min-height: 0;
+        overflow: hidden;     /* internal scrollbox handles scrolling */
+      }
+      .interaction-scrollbox {
+        height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-right: 0.5rem;
+        border-top: 1px solid rgba(49, 51, 63, 0.18);
+      }
+      /* Make the page a bit tighter on small screens */
+      @media (max-width: 600px) {
+        .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+      }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Two stacked panels: Scenario (60%) + Interaction (40%)
-TOTAL_PANEL_HEIGHT = 820
-SCENARIO_PANEL_HEIGHT = int(TOTAL_PANEL_HEIGHT * 0.60)
-INTERACTION_PANEL_HEIGHT = TOTAL_PANEL_HEIGHT - SCENARIO_PANEL_HEIGHT
+# Open the fixed layout wrapper
+st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 
-scenario_panel = st.container(height=SCENARIO_PANEL_HEIGHT)
-interaction_panel = st.container(height=INTERACTION_PANEL_HEIGHT)
+# --- Scenario panel (60%) ---
+st.markdown('<div class="scenario-panel">', unsafe_allow_html=True)
 
-with scenario_panel:
-    top_a, top_b, top_c = st.columns([1, 1.3, 1.3])
+top_a, top_b, top_c = st.columns([1, 1.3, 1.3])
+with top_a:
+    if st.button("⬅ Home", key="home_btn"):
+        st.session_state.page = "home"
+        st.rerun()
 
-    with top_a:
-        if st.button("⬅ Home", key="home_btn"):
-            st.session_state.page = "home"
-            st.rerun()
+with top_b:
+    if st.button("🆕 New Conversation", key="new_convo_btn"):
+        # Clear previous conversation log + current interaction.
+        reset_conversation_state(clear_log=True)
+        st.rerun()
 
-    with top_b:
-        if st.button("🆕 New Conversation", key="new_convo_btn"):
-            # Clear previous conversation log + current interaction.
-            reset_conversation_state(clear_log=True)
-            st.rerun()
+with top_c:
+    if st.button("⏹ End Conversation", key="end_convo_btn"):
+        # Archive anything currently visible, then go to review page.
+        archive_active_interaction()
+        st.session_state.page = "review"
+        st.rerun()
 
-    with top_c:
-        if st.button("⏹ End Conversation", key="end_convo_btn"):
-            # Archive anything currently visible, then go to review page.
-            archive_active_interaction()
-            st.session_state.page = "review"
-            st.rerun()
+st.caption(f"Scenario: {st.session_state.scenario}")
+st.info("Scenario image placeholder (coming soon).")
 
-    st.caption(f"Scenario: {st.session_state.scenario}")
-    st.info("Scenario image placeholder (coming soon).")
+# Close scenario panel, open interaction panel + scrollbox
+st.markdown('</div><div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
 
 
 # ================== SCENARIO STATE MACHINE ==================
@@ -416,6 +446,8 @@ OPTIONAL_TUTOR:
 if not st.session_state.messages:
     st.session_state.messages.append({"role": "system", "content": system_prompt})
 
+
+interaction_panel = st.container()
 
 with interaction_panel:
     # ================== USER INPUT ==================
@@ -627,3 +659,6 @@ If fully natural: Looks good 👍
                         st.markdown(f"**Tip:** {tip}")
     else:
         st.info("Record a message to start.")
+
+    # Close scrollbox + panels
+    st.markdown('</div></div></div>', unsafe_allow_html=True)
