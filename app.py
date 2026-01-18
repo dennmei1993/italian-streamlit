@@ -10,7 +10,6 @@ import hashlib
 import base64
 import mimetypes
 import streamlit.components.v1 as components
-import uuid
 
 # ================== SETUP ==================
 load_dotenv()
@@ -138,66 +137,15 @@ def _get_query_param(name: str) -> str:
             return ""
 
 
-def _clear_query_params(preserve: list[str] | None = None) -> None:
-    """Compat helper to clear query params after handling an action.
-
-    If `preserve` is provided, those keys will be kept (if present).
-    """
-    preserve = preserve or []
+def _clear_query_params() -> None:
+    """Compat helper to clear query params after handling an action."""
     try:
-        # New API (Streamlit >=1.30): st.query_params is mutable mapping
-        current = dict(st.query_params)
-        kept = {k: v for k, v in current.items() if k in preserve}
         st.query_params.clear()
-        for k, v in kept.items():
-            st.query_params[k] = v
     except Exception:
         try:
-            # Legacy API
-            qp = st.experimental_get_query_params()
-            kept = {k: qp.get(k) for k in preserve if k in qp}
-            st.experimental_set_query_params(**kept)
+            st.experimental_set_query_params()
         except Exception:
             pass
-
-
-# ================== SESSION ID + PERSISTENT LOG (SURVIVES RELOADS) ==================
-@st.cache_resource
-def _log_store() -> dict:
-    """A small in-memory store keyed by a session id, to survive full reloads (common on mobile)."""
-    return {}
-
-def _ensure_session_id() -> str:
-    sid = _get_query_param("sid")
-    if sid:
-        return str(sid)
-    sid = uuid.uuid4().hex
-    # Set sid in URL without wiping other params (best-effort across Streamlit versions).
-    try:
-        current = dict(st.query_params)
-        current["sid"] = sid
-        st.query_params.clear()
-        for k, v in current.items():
-            st.query_params[k] = v
-    except Exception:
-        try:
-            qp = st.experimental_get_query_params()
-            qp["sid"] = [sid]
-            # Flatten legacy qp values
-            flat = {}
-            for k, v in qp.items():
-                if isinstance(v, list):
-                    flat[k] = v[0] if v else ""
-                else:
-                    flat[k] = v
-            st.experimental_set_query_params(**flat)
-        except Exception:
-            pass
-    return sid
-
-SESSION_ID = _ensure_session_id()
-STORE = _log_store()
-STORE.setdefault(SESSION_ID, [])
 
 
 # ================== OPTIONAL VOCAB ==================
@@ -228,13 +176,13 @@ if "playback_my_sentence" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Archive of completed interactions (for End Conversation review)
-if "conversation_log" not in st.session_state:
-    st.session_state.conversation_log = []
-
 # The current interaction displayed in the Interaction panel (cleared on next submit)
 if "active_interaction" not in st.session_state:
     st.session_state.active_interaction = None
+
+# Archived conversation history for Review page
+if "conversation_log" not in st.session_state:
+    st.session_state.conversation_log = []
 
 if "turn_count" not in st.session_state:
     st.session_state.turn_count = 0
@@ -249,20 +197,27 @@ if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
 
-def reset_conversation_state(clear_log: bool) -> None:
+def reset_conversation_state(clear_log: bool = True) -> None:
     """Reset the in-session conversation state. Optionally clear the archived log."""
+    # Ensure log exists
+    if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
+    if clear_log:
+        st.session_state.conversation_log = []
+
     st.session_state.messages = []
     st.session_state.turn_count = 0
     st.session_state.last_user_input = ""
     st.session_state.last_audio_hash = None
     st.session_state.stage = "ORDERING"
     st.session_state.active_interaction = None
-    if clear_log:
-        st.session_state.conversation_log = []
+
 
 
 def archive_active_interaction() -> None:
     return  # already archived at creation time
+
+
 
 
 # ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
@@ -279,22 +234,24 @@ if nav_action:
 
     if nav_action == "home":
         st.session_state.page = "home"
-        _clear_query_params(preserve=['sid'])
+        _clear_query_params()
         st.rerun()
 
     if nav_action == "new":
         # Start a fresh conversation
-        reset_conversation_state()
+        if "reset_conversation_state" in globals():
+            reset_conversation_state(clear_log=True)
         st.session_state.page = "conversation"
-        _clear_query_params(preserve=['sid'])
+        _clear_query_params()
         st.rerun()
 
     if nav_action == "end":
-        # Archive current turn and move to review page
-        archive_active_interaction()
+        if st.session_state.get("active_interaction"):
+            archive_active_interaction()
         st.session_state.page = "review"
-        _clear_query_params(preserve=['sid'])
+        _clear_query_params()
         st.rerun()
+
 
 
 # ================== HOME PAGE ==================
@@ -322,14 +279,12 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
@@ -341,8 +296,12 @@ if st.session_state.page == "home":
 
 # ================== REVIEW PAGE (End Conversation) ==================
 if st.session_state.page == "review":
+    # Safety: ensure the last on-screen turn is included in the log
+    archive_active_interaction()
     st.title("📜 Conversation Review")
     st.caption("Here is your full conversation history from the last session.")
+
+    log = st.session_state.get("conversation_log", [])
 
     col_a, col_b = st.columns([1, 2])
     with col_a:
@@ -357,7 +316,8 @@ if st.session_state.page == "review":
 
     st.divider()
 
-    log = st.session_state.conversation_log[:]  # copy
+    # log = st.session_state.conversation_log[:]  # copy
+    log = st.session_state.get("conversation_log", [])
     if not log:
         st.info("No conversation history yet. Start a conversation and press End Conversation.")
         st.stop()
@@ -398,6 +358,9 @@ show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
+st.session_state.setdefault("conversation_log", [])
+
+
 # ------------------ Scenario Assets ------------------
 # Repo structure (as per your GitHub screenshots):
 #   assets/backgrounds/{cafe,directions,transport}.jpg
@@ -428,23 +391,39 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
     return candidates[0] if candidates else ""
 
 
-
 # ------------------ Scenario Panel ------------------
-# We render the scene (background + avatar overlay) as ONE HTML block,
+# We render the scene (background + avatar overlay + icon bar) as ONE HTML block,
 # so the overlay works reliably on mobile.
 
 bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
 av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
+bg_abs = _abs_asset_path(bg_rel)
+av_abs = _abs_asset_path(av_rel)
 
-st.markdown(f"""
+# Use a tiny HTML block ONLY for the icon row. (Native st.columns() will stack on phones.)
+icon_row_html = """
 <style>
-.iconbar {{
+  .iconbar {display:flex;gap:12px;justify-content:space-between;margin:0 0 10px 0;}
+  .iconbtn {flex:1;text-align:center;padding:10px 0;border-radius:12px;
+            border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);
+            color:#fff;text-decoration:none;font-size:22px;line-height:1;}
+</style>
+<div class="iconbar">
+  <a class="iconbtn" href="?action=home" title="Home">🏠</a>
+  <a class="iconbtn" href="?action=new" title="New Conversation">🆕</a>
+  <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
+</div>
+"""
+
+st.markdown("""
+<style>
+.iconbar {
   display: flex;
   justify-content: center;
   gap: 12px;
   margin: 0 0 10px 0;
-}}
-.iconbtn {{
+}
+.iconbtn {
   width: 56px;
   height: 44px;
   display: flex;
@@ -456,18 +435,18 @@ st.markdown(f"""
   color: white;
   text-decoration: none;
   font-size: 22px;
-}}
+}
 </style>
 
 <div class="iconbar">
-  <a class="iconbtn" href="?sid={SESSION_ID}&action=home" title="Home">🏠</a>
-  <a class="iconbtn" href="?sid={SESSION_ID}&action=new" title="New Conversation">🆕</a>
-  <a class="iconbtn" href="?sid={SESSION_ID}&action=end" title="End Conversation">⏹</a>
+  <a class="iconbtn" href="?action=home">🏠</a>
+  <a class="iconbtn" href="?action=new">🆕</a>
+  <a class="iconbtn" href="?action=end">⏹</a>
 </div>
 """, unsafe_allow_html=True)
 
+
 st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
- {_normalize_scenario_label(scenario)}")
 
 # Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
 bg_uri = _file_to_data_uri(bg_rel)
@@ -662,8 +641,8 @@ if audio_value is not None:
     if already_processed:
         st.caption("✅ Recording already processed.")
     else:
-        # New submission: archive previous interaction and clear the interaction panel content
-        archive_active_interaction()
+        # New submission: clear the Interaction panel immediately (history is logged per-turn)
+        st.session_state.active_interaction = None
         st.session_state.last_audio_hash = audio_hash
         st.session_state.last_user_input = ""  # allow same sentence in new turn if needed
 
@@ -807,22 +786,28 @@ If fully natural: Looks good 👍
 
     # Store as the active interaction (Interaction panel shows only this)
     turn_data = {
-        "user": user_input,
-        "partner": partner_text,
-        "tutor_raw": tutor_text,
-        "tutor_recommended": tutor_struct.get("recommended", ""),
-        "tutor_tip": tutor_struct.get("tip", ""),
-        "tutor_recommended_audio": recommended_audio,
-        "partner_audio": partner_audio,
-        "user_audio": user_audio,
-        "translation": None,
-    }
+    "user": user_input,
+    "partner": partner_text,
+    "tutor_raw": tutor_text,
+    "tutor_recommended": tutor_struct.get("recommended", ""),
+    "tutor_tip": tutor_struct.get("tip", ""),
+    "tutor_recommended_audio": recommended_audio,
+    "partner_audio": partner_audio,
+    "user_audio": user_audio,
+    "translation": None,
+}
 
 # Always append to log immediately (guaranteed persistence)
 st.session_state.conversation_log.append(turn_data)
 
 # Also keep as the active interaction for display
 st.session_state.active_interaction = turn_data
+
+    # Log this completed turn immediately for the Review page
+if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
+if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
+        st.session_state.conversation_log.append(dict(st.session_state.active_interaction))
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
 turn = st.session_state.active_interaction
@@ -862,5 +847,4 @@ if turn:
                     st.markdown(f"**Tip:** {tip}")
 else:
     st.info("Record a message to start.")
-
 
