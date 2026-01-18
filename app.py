@@ -6,6 +6,7 @@ import tempfile
 import os
 import re
 import io
+import hashlib
 
 # ================== SETUP ==================
 load_dotenv()
@@ -129,6 +130,9 @@ if "turn_count" not in st.session_state:
 if "last_user_input" not in st.session_state:
     st.session_state.last_user_input = ""
 
+if "last_audio_hash" not in st.session_state:
+    st.session_state.last_audio_hash = None
+
 if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
@@ -173,6 +177,7 @@ if st.session_state.page == "home":
         st.session_state.turn_count = 0
         st.session_state.last_user_input = ""
         st.session_state.stage = "ORDERING"
+        st.session_state.last_audio_hash = None
         st.session_state.page = "conversation"
         st.rerun()
 
@@ -328,19 +333,20 @@ if not st.session_state.messages:
 
 # ================== USER INPUT ==================
 # Reduce rerun churn: require explicit submit to process audio.
-with st.form("audio_form", clear_on_submit=False):
-    audio_value = st.audio_input("Record a voice message")
-    submitted = st.form_submit_button("Send")
+audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
 final_audio_input = ""
 repaired_flag = False
 
-if submitted:
-    if audio_value is None:
-        st.warning("Please record a message first, then press Send.")
+if audio_value is not None:
+    audio_bytes = audio_value.getvalue()
+    audio_hash = hashlib.md5(audio_bytes).hexdigest()
+    already_processed = audio_hash == st.session_state.last_audio_hash
+    if already_processed:
+        st.caption("✅ Recording already processed.")
     else:
-        audio_bytes = audio_value.getvalue()
+        st.session_state.last_audio_hash = audio_hash
         audio_file = io.BytesIO(audio_bytes)
         audio_file.name = "speech.wav"
 
@@ -383,7 +389,7 @@ if submitted:
                         {
                             "role": "user",
                             "content": (
-                                "Scenario: {scenario}\nNoisy transcript: {transcribed_text}\nAllowed/simple vocab (optional): {vocab_hint}\nOutput ONLY the repaired Italian sentence."
+                                f"Scenario: {scenario}\nNoisy transcript: {transcribed_text}\nAllowed/simple vocab (optional): {vocab_hint}\nOutput ONLY the repaired Italian sentence."
                             ),
                         },
                     ],
