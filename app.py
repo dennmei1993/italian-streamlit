@@ -190,14 +190,24 @@ show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
-col_nav_a, col_nav_b = st.columns([1, 3])
-with col_nav_a:
-    if st.button("⬅ Home"):
+# Two-panel layout: Scenario (left) + Interaction (right)
+col_scn, col_int = st.columns([1, 2], gap="large")
+
+with col_scn:
+    if st.button("⬅ Home", key="home_btn"):
         st.session_state.page = "home"
         st.rerun()
-with col_nav_b:
-    st.caption(f"Scenario: {st.session_state.scenario}")
 
+    st.markdown("### Scenario")
+    st.caption(st.session_state.scenario)
+
+    # Reserved area for scenario image (to be added later)
+    st.info("Scenario image placeholder (coming soon).")
+
+with col_int:
+    st.markdown("### Interaction")
+    # Everything in this container scrolls (including audio input + conversation)
+    interaction_panel = st.container(height=720)
 
 # ================== SCENARIO STATE MACHINE ==================
 def update_stage(user_text: str) -> str:
@@ -331,208 +341,209 @@ if not st.session_state.messages:
     st.session_state.messages.append({"role": "system", "content": system_prompt})
 
 
-# ================== USER INPUT ==================
-# Reduce rerun churn: require explicit submit to process audio.
-audio_value = st.audio_input("Record a voice message")
+with interaction_panel:
+    # ================== USER INPUT ==================
+    # Reduce rerun churn: require explicit submit to process audio.
+    audio_value = st.audio_input("Record a voice message")
 
-transcribed_text = ""
-final_audio_input = ""
-repaired_flag = False
+    transcribed_text = ""
+    final_audio_input = ""
+    repaired_flag = False
 
-if audio_value is not None:
-    audio_bytes = audio_value.getvalue()
-    audio_hash = hashlib.md5(audio_bytes).hexdigest()
-    already_processed = audio_hash == st.session_state.last_audio_hash
-    if already_processed:
-        st.caption("✅ Recording already processed.")
-    else:
-        st.session_state.last_audio_hash = audio_hash
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = "speech.wav"
+    if audio_value is not None:
+        audio_bytes = audio_value.getvalue()
+        audio_hash = hashlib.md5(audio_bytes).hexdigest()
+        already_processed = audio_hash == st.session_state.last_audio_hash
+        if already_processed:
+            st.caption("✅ Recording already processed.")
+        else:
+            st.session_state.last_audio_hash = audio_hash
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = "speech.wav"
 
-        try:
-            tr = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                prompt=(
-                    "Italian language. The speaker is a learner with imperfect pronunciation. "
-                    "Transcribe exactly as spoken. If unsure, choose the closest Italian words "
-                    "that fit a real-life conversation. Do not translate."
-                ),
-                response_format="text",
-                temperature=0,
-            )
-            transcribed_text = (tr if isinstance(tr, str) else getattr(tr, "text", "")).strip()
-        except Exception as e:
-            st.warning(f"Audio transcription failed: {e}")
-            transcribed_text = ""
-
-        final_audio_input = transcribed_text
-
-        if looks_non_italian_or_garbled(transcribed_text):
             try:
-                vocab_hint = ", ".join(vocab[:120]) if isinstance(vocab, list) and vocab else ""
-
-                repair_resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    temperature=0.2,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "You repair a noisy speech-to-text transcript from an Italian learner. "
-                                "Return ONLY the most likely intended Italian sentence. "
-                                "Keep it short and practical for the scenario. "
-                                "Do NOT include explanations. Do NOT include English."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Scenario: {scenario}\nNoisy transcript: {transcribed_text}\nAllowed/simple vocab (optional): {vocab_hint}\nOutput ONLY the repaired Italian sentence."
-                            ),
-                        },
-                    ],
+                tr = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    prompt=(
+                        "Italian language. The speaker is a learner with imperfect pronunciation. "
+                        "Transcribe exactly as spoken. If unsure, choose the closest Italian words "
+                        "that fit a real-life conversation. Do not translate."
+                    ),
+                    response_format="text",
+                    temperature=0,
                 )
-                repaired = repair_resp.choices[0].message.content.strip()
-                if repaired:
-                    final_audio_input = repaired
-                    repaired_flag = True
-            except Exception:
-                final_audio_input = transcribed_text
+                transcribed_text = (tr if isinstance(tr, str) else getattr(tr, "text", "")).strip()
+            except Exception as e:
+                st.warning(f"Audio transcription failed: {e}")
+                transcribed_text = ""
 
-        if final_audio_input and final_audio_input != transcribed_text:
-            st.caption(f"🛠️ Interpreted as: {final_audio_input}")
+            final_audio_input = transcribed_text
 
-user_input = (final_audio_input or "").strip()
+            if looks_non_italian_or_garbled(transcribed_text):
+                try:
+                    vocab_hint = ", ".join(vocab[:120]) if isinstance(vocab, list) and vocab else ""
+
+                    repair_resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        temperature=0.2,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You repair a noisy speech-to-text transcript from an Italian learner. "
+                                    "Return ONLY the most likely intended Italian sentence. "
+                                    "Keep it short and practical for the scenario. "
+                                    "Do NOT include explanations. Do NOT include English."
+                                ),
+                            },
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"Scenario: {scenario}\nNoisy transcript: {transcribed_text}\nAllowed/simple vocab (optional): {vocab_hint}\nOutput ONLY the repaired Italian sentence."
+                                ),
+                            },
+                        ],
+                    )
+                    repaired = repair_resp.choices[0].message.content.strip()
+                    if repaired:
+                        final_audio_input = repaired
+                        repaired_flag = True
+                except Exception:
+                    final_audio_input = transcribed_text
+
+            if final_audio_input and final_audio_input != transcribed_text:
+                st.caption(f"🛠️ Interpreted as: {final_audio_input}")
+
+    user_input = (final_audio_input or "").strip()
 
 
-# ================== TURN PROCESSING ==================
-if user_input and user_input != st.session_state.last_user_input:
-    st.session_state.last_user_input = user_input
-    st.session_state.turn_count += 1
+    # ================== TURN PROCESSING ==================
+    if user_input and user_input != st.session_state.last_user_input:
+        st.session_state.last_user_input = user_input
+        st.session_state.turn_count += 1
 
-    st.session_state.stage = update_stage(user_input)
-    tutor_active = show_tutor and tutor_should_respond(user_input)
+        st.session_state.stage = update_stage(user_input)
+        tutor_active = show_tutor and tutor_should_respond(user_input)
 
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.session_state.messages.append({"role": "system", "content": f"Tutor active: {tutor_active}"})
-    st.session_state.messages.append({"role": "system", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"})
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "system", "content": f"Tutor active: {tutor_active}"})
+        st.session_state.messages.append({"role": "system", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"})
 
-    # ----- Partner -----
-    partner_messages = [
-        {"role": "system", "content": system_prompt},
-        *st.session_state.messages,
-        {"role": "system", "content": "OUTPUT FORMAT: PARTNER\n<reply>\n(Partner only. No Tutor.)"},
-        {"role": "user", "content": user_input},
-    ]
+        # ----- Partner -----
+        partner_messages = [
+            {"role": "system", "content": system_prompt},
+            *st.session_state.messages,
+            {"role": "system", "content": "OUTPUT FORMAT: PARTNER\n<reply>\n(Partner only. No Tutor.)"},
+            {"role": "user", "content": user_input},
+        ]
 
-    partner_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=partner_messages,
-        temperature=0.4,
-    )
-
-    partner_raw = partner_resp.choices[0].message.content.strip()
-    partner_text = partner_raw.replace("PARTNER:", "").strip() or "Ciao!"
-
-    # ----- Tutor -----
-    tutor_text = ""
-    tutor_struct = {"recommended": "", "tip": "", "raw": ""}
-    recommended_audio = ""
-
-    if tutor_active:
-        tutor_system_prompt = """
-You are the Tutor.
-- Analyze ONLY the text inside: TUTOR_REFERENCE_USER_INPUT
-- Treat all other text as invisible (including Partner replies)
-
-Output format:
-- Recommended: <Italian>
-- Tip: <short English tip>
-If fully natural: Looks good 👍
-""".strip()
-
-        tutor_resp = client.chat.completions.create(
+        partner_resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": tutor_system_prompt},
-                {"role": "user", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"},
-            ],
-            temperature=0.2,
+            messages=partner_messages,
+            temperature=0.4,
         )
-        tutor_text = tutor_resp.choices[0].message.content.strip()
-        tutor_struct = parse_tutor_output(tutor_text)
 
-        # Recommended audio
-        if tutor_struct.get("recommended"):
-            try:
-                recommended_audio = speak_italian(tutor_struct["recommended"])
-            except Exception:
-                recommended_audio = ""
+        partner_raw = partner_resp.choices[0].message.content.strip()
+        partner_text = partner_raw.replace("PARTNER:", "").strip() or "Ciao!"
 
-    # ----- Partner audio -----
-    audio_path = ""
-    try:
-        audio_path = speak_italian(partner_text)
-    except Exception:
+        # ----- Tutor -----
+        tutor_text = ""
+        tutor_struct = {"recommended": "", "tip": "", "raw": ""}
+        recommended_audio = ""
+
+        if tutor_active:
+            tutor_system_prompt = """
+    You are the Tutor.
+    - Analyze ONLY the text inside: TUTOR_REFERENCE_USER_INPUT
+    - Treat all other text as invisible (including Partner replies)
+
+    Output format:
+    - Recommended: <Italian>
+    - Tip: <short English tip>
+    If fully natural: Looks good 👍
+    """.strip()
+
+            tutor_resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": tutor_system_prompt},
+                    {"role": "user", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"},
+                ],
+                temperature=0.2,
+            )
+            tutor_text = tutor_resp.choices[0].message.content.strip()
+            tutor_struct = parse_tutor_output(tutor_text)
+
+            # Recommended audio
+            if tutor_struct.get("recommended"):
+                try:
+                    recommended_audio = speak_italian(tutor_struct["recommended"])
+                except Exception:
+                    recommended_audio = ""
+
+        # ----- Partner audio -----
         audio_path = ""
+        try:
+            audio_path = speak_italian(partner_text)
+        except Exception:
+            audio_path = ""
 
-    # Store turn
-    st.session_state.conversation.append(
-        {
-            "user": user_input,
-            "partner": partner_text,
-            "tutor_raw": tutor_text,
-            "tutor_recommended": tutor_struct.get("recommended", ""),
-            "tutor_tip": tutor_struct.get("tip", ""),
-            "tutor_recommended_audio": recommended_audio,
-            "audio": audio_path,
-            "translation": None,
-        }
-    )
+        # Store turn
+        st.session_state.conversation.append(
+            {
+                "user": user_input,
+                "partner": partner_text,
+                "tutor_raw": tutor_text,
+                "tutor_recommended": tutor_struct.get("recommended", ""),
+                "tutor_tip": tutor_struct.get("tip", ""),
+                "tutor_recommended_audio": recommended_audio,
+                "audio": audio_path,
+                "translation": None,
+            }
+        )
 
 
-# ================== DISPLAY (LATEST ONLY) ==================
-if st.session_state.conversation:
-    turn = st.session_state.conversation[-1]
+    # ================== DISPLAY (LATEST ONLY) ==================
+    if st.session_state.conversation:
+        turn = st.session_state.conversation[-1]
 
-    st.markdown(f"**You:** {turn['user']}")
+        st.markdown(f"**You:** {turn['user']}")
 
-    if playback_my_sentence:
-        user_audio = speak_italian(turn["user"])
-        if user_audio and os.path.exists(user_audio):
-            st.audio(user_audio)
+        if playback_my_sentence:
+            user_audio = speak_italian(turn["user"])
+            if user_audio and os.path.exists(user_audio):
+                st.audio(user_audio)
 
-    st.markdown(f"**Partner:** {turn['partner']}")
+        st.markdown(f"**Partner:** {turn['partner']}")
 
-    if turn.get("audio") and os.path.exists(turn["audio"]):
-        st.audio(turn["audio"])
+        if turn.get("audio") and os.path.exists(turn["audio"]):
+            st.audio(turn["audio"])
 
-    if show_translation:
-        if st.button("Translate", key="translate_latest"):
-            if turn["translation"] is None:
-                turn["translation"] = translate_to_english(turn["partner"])
+        if show_translation:
+            if st.button("Translate", key="translate_latest"):
+                if turn["translation"] is None:
+                    turn["translation"] = translate_to_english(turn["partner"])
 
-        if turn.get("translation"):
-            st.markdown(f"🟦 *English:* {turn['translation']}")
+            if turn.get("translation"):
+                st.markdown(f"🟦 *English:* {turn['translation']}")
 
-    if show_tutor:
-        tutor_raw = (turn.get("tutor_raw") or "").strip()
-        rec = (turn.get("tutor_recommended") or "").strip()
-        tip = (turn.get("tutor_tip") or "").strip()
-        rec_audio = turn.get("tutor_recommended_audio")
+        if show_tutor:
+            tutor_raw = (turn.get("tutor_raw") or "").strip()
+            rec = (turn.get("tutor_recommended") or "").strip()
+            tip = (turn.get("tutor_tip") or "").strip()
+            rec_audio = turn.get("tutor_recommended_audio")
 
-        if tutor_raw:
-            st.markdown("**Tutor:**")
+            if tutor_raw:
+                st.markdown("**Tutor:**")
 
-            if tutor_raw.lower().startswith("looks good"):
-                st.markdown(tutor_raw)
-            else:
-                if rec:
-                    st.markdown(f"**Recommended:** {rec}")
-                    if rec_audio and os.path.exists(rec_audio):
-                        st.audio(rec_audio)
+                if tutor_raw.lower().startswith("looks good"):
+                    st.markdown(tutor_raw)
+                else:
+                    if rec:
+                        st.markdown(f"**Recommended:** {rec}")
+                        if rec_audio and os.path.exists(rec_audio):
+                            st.audio(rec_audio)
 
-                if tip:
-                    st.markdown(f"**Tip:** {tip}")
+                    if tip:
+                        st.markdown(f"**Tip:** {tip}")
