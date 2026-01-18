@@ -244,11 +244,12 @@ if nav_action:
         st.rerun()
 
     if nav_action == "end":
-        # Archive current turn and move to review page
-        archive_active_interaction()
+        if st.session_state.get("active_interaction"):
+            archive_active_interaction()
         st.session_state.page = "review"
         _clear_query_params()
         st.rerun()
+
 
 
 # ================== HOME PAGE ==================
