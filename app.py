@@ -294,7 +294,7 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    st.divider()
+    #st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
