@@ -185,6 +185,10 @@ def should_show_tutor(turn_count: int, english: bool, repaired: bool) -> bool:
     # V1.1: less noisy but still helpful
     if english or repaired:
         return True
+    # Show on the first turn so users can immediately see Tutor tips working,
+    # then every 3 turns after that.
+    if turn_count == 1:
+        return True
     return turn_count % 3 == 0
 
 
@@ -314,6 +318,8 @@ if selected_key != st.session_state.scenario_key:
 col_a, col_b = st.columns([1, 1])
 with col_a:
     show_tutor = st.toggle("Show tutor tips", value=True)
+    if show_tutor:
+        st.caption("Tutor tips show on the first turn, then every 3 turns (or whenever English/repair is detected).")
 with col_b:
     show_translation = st.toggle("Enable translation button", value=True)
 
@@ -459,15 +465,19 @@ if user_input and user_input != st.session_state.last_user_input:
             f"Partner replied: {partner_text}\n"
         )
 
-        tutor_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": tutor_system},
-                {"role": "user", "content": tutor_user},
-            ],
-            temperature=0.2,
-        )
-        tutor_text = tutor_resp.choices[0].message.content.strip()
+        try:
+            tutor_resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": tutor_system},
+                    {"role": "user", "content": tutor_user},
+                ],
+                temperature=0.2,
+            )
+            tutor_text = tutor_resp.choices[0].message.content.strip()
+        except Exception as e:
+            tutor_text = ""
+            st.warning(f"Tutor tips failed to generate: {e}")
 
     # ----- TTS -----
     partner_audio_path = ""
