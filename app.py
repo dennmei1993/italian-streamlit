@@ -47,6 +47,25 @@ def speak_italian(text: str) -> str:
     return audio_path
 
 
+st.markdown("""
+<style>
+.nav-row {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 12px 0 6px 0;
+}
+
+.nav-btn button {
+    width: 56px !important;
+    height: 44px !important;
+    border-radius: 12px !important;
+    font-size: 20px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 def looks_non_italian_or_garbled(text: str) -> bool:
     """Heuristic: triggers repair when transcript seems off."""
     if not text:
@@ -417,14 +436,28 @@ st.markdown(
 )
 
 # Keep the 3 nav buttons on ONE ROW (even on iOS Safari)
-nav_home_col, nav_new_col, nav_end_col = st.columns([1, 1, 1], gap="small")
+with st.container():
+    st.markdown('<div class="nav-row">', unsafe_allow_html=True)
 
-with nav_home_col:
-    go_home = st.button("🏠", key="nav_home", use_container_width=False)
-with nav_new_col:
-    new_conv = st.button("🆕", key="nav_new", use_container_width=False)
-with nav_end_col:
-    end_conv = st.button("⏹", key="nav_end", use_container_width=False)
+    col1, col2, col3 = st.columns([0.3, 0.3, 0.3])
+
+    with col1:
+        if st.button("🏠", key="nav_home", use_container_width=False):
+            st.session_state.page = "home"
+            st.rerun()
+
+    with col2:
+        if st.button("🆕", key="nav_new", use_container_width=False):
+            st.session_state.page = "scenario"
+            st.rerun()
+
+    with col3:
+        if st.button("⏭", key="nav_next", use_container_width=False):
+            st.session_state.page = "conversation"
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 if go_home:
     st.session_state.page = "home"
