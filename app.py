@@ -190,24 +190,38 @@ show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
-# Two-panel layout: Scenario (left) + Interaction (right)
-col_scn, col_int = st.columns([1, 2], gap="large")
+# Lock the overall page (no outer scroll). Only the interaction panel scrolls internally.
+st.markdown(
+    """
+    <style>
+      html, body { height: 100%; overflow: hidden; }
+      section.main { height: 100vh; overflow: hidden; }
+      .block-container { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+    </style>
+    """
+    , unsafe_allow_html=True
+)
 
-with col_scn:
-    if st.button("⬅ Home", key="home_btn"):
-        st.session_state.page = "home"
-        st.rerun()
+# Two stacked panels: Scenario (60%) + Interaction (40%)
+# Streamlit containers use pixel heights; adjust TOTAL_PANEL_HEIGHT if needed.
+TOTAL_PANEL_HEIGHT = 820
+SCENARIO_PANEL_HEIGHT = int(TOTAL_PANEL_HEIGHT * 0.60)
+INTERACTION_PANEL_HEIGHT = TOTAL_PANEL_HEIGHT - SCENARIO_PANEL_HEIGHT
 
-    st.markdown("### Scenario")
-    st.caption(st.session_state.scenario)
+scenario_panel = st.container(height=SCENARIO_PANEL_HEIGHT)
+interaction_panel = st.container(height=INTERACTION_PANEL_HEIGHT)
+
+with scenario_panel:
+    col_a, col_b = st.columns([1, 3])
+    with col_a:
+        if st.button("⬅ Home", key="home_btn"):
+            st.session_state.page = "home"
+            st.rerun()
+    with col_b:
+        st.caption(f"Scenario: {st.session_state.scenario}")
 
     # Reserved area for scenario image (to be added later)
     st.info("Scenario image placeholder (coming soon).")
-
-with col_int:
-    st.markdown("### Interaction")
-    # Everything in this container scrolls (including audio input + conversation)
-    interaction_panel = st.container(height=720)
 
 # ================== SCENARIO STATE MACHINE ==================
 def update_stage(user_text: str) -> str:
