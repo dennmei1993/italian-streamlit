@@ -176,10 +176,6 @@ if "playback_my_sentence" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Archive of completed interactions (for End Conversation review)
-if "conversation_log" not in st.session_state:
-    st.session_state.conversation_log = []
-
 # The current interaction displayed in the Interaction panel (cleared on next submit)
 if "active_interaction" not in st.session_state:
     st.session_state.active_interaction = None
@@ -216,9 +212,6 @@ def archive_active_interaction():
     turn = st.session_state.get("active_interaction")
     if not turn:
         return
-
-    if "conversation_log" not in st.session_state:
-        st.session_state.conversation_log = []
 
     st.session_state.conversation_log.append(turn)
     st.session_state.active_interaction = None
@@ -359,6 +352,9 @@ scenario = st.session_state.scenario
 show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
+
+st.session_state.setdefault("conversation_log", [])
+
 
 # ------------------ Scenario Assets ------------------
 # Repo structure (as per your GitHub screenshots):
