@@ -44,13 +44,23 @@ STAGE_AVATARS = {
 
 
 def _file_to_data_uri(path: str) -> str:
-    """Convert a local image file to a data URI for HTML rendering."""
+    """Convert a local image file to a data URI for HTML rendering.
+
+    Streamlit Cloud runs the app from the repo root, but to be safe on all
+    environments we resolve relative paths against this file's directory.
+    """
     if not path:
         return ""
     try:
-        if not os.path.exists(path):
+        # Resolve relative paths against the directory containing app.py
+        abs_path = path
+        if not os.path.isabs(abs_path):
+            abs_path = os.path.join(os.path.dirname(__file__), abs_path)
+
+        if not os.path.exists(abs_path):
             return ""
-        ext = os.path.splitext(path)[1].lower().lstrip(".")
+
+        ext = os.path.splitext(abs_path)[1].lower().lstrip(".")
         mime = {
             "png": "image/png",
             "jpg": "image/jpeg",
@@ -59,7 +69,8 @@ def _file_to_data_uri(path: str) -> str:
         }.get(ext, "")
         if not mime:
             return ""
-        with open(path, "rb") as f:
+
+        with open(abs_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("utf-8")
         return f"data:{mime};base64,{b64}"
     except Exception:
@@ -401,8 +412,10 @@ st.markdown(
       /* Buttons sit at the bottom of the Scenario panel */
       .scenario-controls {
         position: absolute;
-right: 0;
-padding: 0.5rem;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.5rem;
         background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
         z-index: 5;
         display: flex;
