@@ -150,8 +150,8 @@ if st.session_state.page == "home":
 # From here on, we are in the main conversation page.
 scenario = st.session_state.scenario
 
-st.title("🗣️ Language Conversation Tutor")
-st.caption(f"Scenario: {scenario}")
+# st.title("🗣️ Language Conversation Tutor")
+# st.caption(f"Scenario: {scenario}")
 
 show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
@@ -174,8 +174,8 @@ with col_nav_b:
 st.divider()
 
 # Conversation page header
-st.title("🗣️ Language Conversation Tutor")
-st.caption("Speak to an AI partner (Italian) and get optional tutor tips.")
+# st.title("🗣️ Language Conversation Tutor")
+# st.caption("Speak to an AI partner (Italian) and get optional tutor tips.")
 
 col_nav_a, col_nav_b = st.columns([1, 3])
 with col_nav_a:
