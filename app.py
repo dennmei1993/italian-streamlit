@@ -7,11 +7,70 @@ import os
 import re
 import io
 import hashlib
+import base64
 
 # ================== SETUP ==================
 load_dotenv()
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
+
+# ================== SCENARIO ASSETS ==================
+# File structure (as per your repo):
+#   assets/backgrounds/<name>.jpg
+#   assets/avatars/<name>.png
+STAGE_BACKGROUNDS = {
+    "☕ Ordering coffee / food": [
+        "assets/backgrounds/cafe.jpg",
+    ],
+    "🚆 Buying tickets / transport": [
+        "assets/backgrounds/transport.jpg",
+    ],
+    "🚶 Asking directions": [
+        "assets/backgrounds/directions.jpg",
+    ],
+}
+
+STAGE_AVATARS = {
+    "☕ Ordering coffee / food": [
+        "assets/avatars/barista.png",
+    ],
+    "🚆 Buying tickets / transport": [
+        "assets/avatars/ticket_clerk.png",
+    ],
+    "🚶 Asking directions": [
+        "assets/avatars/local_person.png",
+    ],
+}
+
+
+def _file_to_data_uri(path: str) -> str:
+    """Convert a local image file to a data URI for HTML rendering."""
+    if not path:
+        return ""
+    try:
+        if not os.path.exists(path):
+            return ""
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        mime = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "webp": "image/webp",
+        }.get(ext, "")
+        if not mime:
+            return ""
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return ""
+
+
+def get_scenario_assets(scenario_label: str) -> tuple[str, str]:
+    """Return (background_path, avatar_path) for the selected scenario label."""
+    bg = (STAGE_BACKGROUNDS.get(scenario_label) or [""])[0]
+    av = (STAGE_AVATARS.get(scenario_label) or [""])[0]
+    return bg, av
 
 # ================== HELPERS ==================
 
@@ -340,27 +399,51 @@ st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 # --- Scenario panel (60%) ---
 st.markdown('<div class="scenario-panel">', unsafe_allow_html=True)
 
-top_a, top_b, top_c = st.columns([1, 1.3, 1.3])
-with top_a:
-    if st.button("⬅ Home", key="home_btn"):
+# Buttons in a single row
+btn_a, btn_b, btn_c = st.columns([1, 1, 1])
+with btn_a:
+    if st.button("⬅ Home", key="home_btn", use_container_width=True):
         st.session_state.page = "home"
         st.rerun()
-
-with top_b:
-    if st.button("🆕 New Conversation", key="new_convo_btn"):
+with btn_b:
+    if st.button("🆕 New Conversation", key="new_convo_btn", use_container_width=True):
         # Clear previous conversation log + current interaction.
         reset_conversation_state(clear_log=True)
         st.rerun()
-
-with top_c:
-    if st.button("⏹ End Conversation", key="end_convo_btn"):
+with btn_c:
+    if st.button("⏹ End Conversation", key="end_convo_btn", use_container_width=True):
         # Archive anything currently visible, then go to review page.
         archive_active_interaction()
         st.session_state.page = "review"
         st.rerun()
 
 st.caption(f"Scenario: {st.session_state.scenario}")
-st.info("Scenario image placeholder (coming soon).")
+
+# Scenario image (background + avatar)
+bg_path, av_path = get_scenario_assets(st.session_state.scenario)
+bg_uri = _file_to_data_uri(bg_path)
+av_uri = _file_to_data_uri(av_path)
+
+if bg_uri:
+    # Use HTML so we can overlay the avatar on the background.
+    avatar_html = (
+        f"<img src='{av_uri}' style='position:absolute; right:10px; bottom:10px; "
+        "width:28%; max-width:180px; height:auto; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));'/>"
+        if av_uri else ""
+    )
+
+    st.markdown(
+        f"""
+        <!-- Fill remaining Scenario panel height under buttons/caption -->
+        <div style="position:relative; width:100%; height: calc(100% - 3.2rem); min-height: 140px;">
+          <div style="position:absolute; inset:0; background-image:url('{bg_uri}'); background-size:cover; background-position:center; border-radius:12px;"></div>
+          {avatar_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.info("Scenario image not found. Add files under assets/backgrounds and assets/avatars.")
 
 # Close scenario panel, open interaction panel + scrollbox
 st.markdown('</div><div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
