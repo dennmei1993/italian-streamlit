@@ -42,12 +42,24 @@ STAGE_AVATARS = {
     ],
 }
 
+def _normalize_scenario_label(label: str) -> str:
+    """Normalize scenario labels to improve dict lookup.
+
+    Allows mappings with or without leading emojis, e.g.
+    "☕ Ordering coffee / food" -> "Ordering coffee / food".
+    """
+    if not label:
+        return ""
+    # Strip leading non-letter symbols/emojis and whitespace
+    return re.sub(r"^[^A-Za-z]+\s*", "", label).strip()
+
 
 def _file_to_data_uri(path: str) -> str:
     """Convert a local image file to a data URI for HTML rendering.
 
-    Streamlit Cloud runs the app from the repo root, but to be safe on all
-    environments we resolve relative paths against this file's directory.
+    Robust on Streamlit Cloud / Linux (case-sensitive FS) by:
+    - resolving relative paths against app.py directory
+    - attempting case-insensitive filename match within the parent folder
     """
     if not path:
         return ""
@@ -56,6 +68,16 @@ def _file_to_data_uri(path: str) -> str:
         abs_path = path
         if not os.path.isabs(abs_path):
             abs_path = os.path.join(os.path.dirname(__file__), abs_path)
+
+        if not os.path.exists(abs_path):
+            # Try case-insensitive match in the same directory
+            parent = os.path.dirname(abs_path)
+            target = os.path.basename(abs_path).lower()
+            if os.path.isdir(parent):
+                for fn in os.listdir(parent):
+                    if fn.lower() == target:
+                        abs_path = os.path.join(parent, fn)
+                        break
 
         if not os.path.exists(abs_path):
             return ""
@@ -77,10 +99,29 @@ def _file_to_data_uri(path: str) -> str:
         return ""
 
 
+
 def get_scenario_assets(scenario_label: str) -> tuple[str, str]:
-    """Return (background_path, avatar_path) for the selected scenario label."""
-    bg = (STAGE_BACKGROUNDS.get(scenario_label) or [""])[0]
-    av = (STAGE_AVATARS.get(scenario_label) or [""])[0]
+    """Return (background_path, avatar_path) for the selected scenario label.
+
+    Supports scenario labels with or without leading emojis.
+    """
+    label = (scenario_label or "").strip()
+    nlabel = _normalize_scenario_label(label)
+
+    def _pick(d: dict) -> str:
+        # Try exact, then normalized, then try adding emojis via scanning keys.
+        if label in d:
+            return (d.get(label) or [""])[0]
+        if nlabel in d:
+            return (d.get(nlabel) or [""])[0]
+        # Last resort: match by normalized form of keys
+        for k, v in d.items():
+            if _normalize_scenario_label(k) == nlabel:
+                return (v or [""])[0]
+        return ""
+
+    bg = _pick(STAGE_BACKGROUNDS)
+    av = _pick(STAGE_AVATARS)
     return bg, av
 
 # ================== HELPERS ==================
@@ -388,6 +429,19 @@ st.markdown(
         background-position: center;
         filter: saturate(1.05);
       }
+      .scenario-missing {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 1rem;
+        color: rgba(0,0,0,0.7);
+        font-weight: 600;
+        background: linear-gradient(135deg, rgba(240,240,240,0.95), rgba(220,220,220,0.95));
+      }
+
       .scenario-badge {
         position: absolute;
         left: 10px;
@@ -505,12 +559,18 @@ if _action in {"home", "new", "end"}:
 
 bg_path, av_path = get_scenario_assets(st.session_state.scenario)
 bg_uri = _file_to_data_uri(bg_path)
+
+missing_html = ""
+if not bg_uri:
+    # Show a helpful message in the panel so missing assets are obvious
+    missing_html = f"<div class='scenario-missing'>Missing background image:<br><code>{bg_path}</code></div>"
+
 av_uri = _file_to_data_uri(av_path)
 
 scenario_html = f"""
 <div class="scenario-panel">
   <div class="scenario-media">
-    <div class="bg" style="background-image:url('{bg_uri or ''}');"></div>
+    <div class="bg" style="background-image:url('{bg_uri or ''}'); background-color:#ddd;"></div>{missing_html}
     {f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""}
     <div class="scenario-badge">{st.session_state.scenario}</div>
 
