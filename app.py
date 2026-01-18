@@ -242,6 +242,35 @@ def archive_active_interaction() -> None:
 
 # ================== HOME PAGE ==================
 if st.session_state.page == "home":
+    st.markdown(
+        """
+        <style>
+          /* Home page: reduce vertical spacing on mobile so everything fits */
+          @media (max-width: 480px) {
+            section.main > div.block-container {
+              padding-top: 0.25rem !important;
+              padding-bottom: 0.5rem !important;
+            }
+            h1 {
+              font-size: 2.0rem !important;
+              line-height: 1.02 !important;
+              margin-top: 0.15rem !important;
+              margin-bottom: 0.35rem !important;
+            }
+            div[data-testid="stCaptionContainer"] {
+              margin-bottom: 0.35rem !important;
+            }
+            div[data-testid="stDivider"] {
+              margin-top: 0.6rem !important;
+              margin-bottom: 0.6rem !important;
+            }
+          }
+          html, body { overflow-x: hidden; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title("🗣️ Language Conversation Tutor")
     st.caption("Select a scenario and settings, then start the conversation.")
 
@@ -374,45 +403,56 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 # ------------------ Scenario Panel ------------------
 
 # Mobile/Streamlit note:
-# Streamlit's `st.columns()` can reflow differently on iOS. The most reliable way to keep
-# 3 icon buttons grouped on one row is to use 5 columns with wide side spacers.
+# On iOS/mobile, Streamlit may collapse `st.columns()` into a vertical stack.
+# We anchor a tiny marker (`#navrow`) and apply CSS to the *next* horizontal block
+# to force a single-row layout and compact icon buttons.
 
 st.markdown(
     """
     <style>
       /* Mobile: tighten overall top padding so Home fits better on one screen */
       @media (max-width: 480px) {
-        section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.5rem !important; }
-        h1 { font-size: 2.0rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
-        p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
-      }
-
-      /* Make ALL icon-ish buttons reasonably compact (safe default) */
-      div[data-testid="stButton"] > button {
-        min-width: 44px !important;
-        height: 44px !important;
-        padding: 0.35rem 0.55rem !important;
-        font-size: 1.25rem !important;
-        border-radius: 14px !important;
+        section.main > div.block-container { padding-top: 0.25rem !important; padding-bottom: 0.5rem !important; }
+        h1 { font-size: 1.9rem !important; line-height: 1.02 !important; margin-top: 0.15rem !important; margin-bottom: 0.35rem !important; }
+        div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stSelectbox"]) { margin-top: 0.15rem !important; }
       }
 
       /* Prevent accidental horizontal overflow on mobile */
       html, body { overflow-x: hidden; }
+
+      /* ----- NAV ROW (ONLY) ----- */
+      #navrow + div[data-testid="stHorizontalBlock"]{
+        flex-wrap: nowrap !important;
+        justify-content: center !important;
+        gap: 0.6rem !important;
+      }
+      #navrow + div[data-testid="stHorizontalBlock"] > div{
+        flex: 0 0 auto !important;
+        width: auto !important;
+      }
+      #navrow + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
+        width: 56px !important;
+        min-width: 56px !important;
+        height: 44px !important;
+        padding: 0.25rem 0 !important;
+        font-size: 1.25rem !important;
+        border-radius: 14px !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Keep the 3 nav buttons grouped + centered using spacer columns.
-# Layout: [spacer, home, new, end, spacer]
-sp_l, b_home, b_new, b_end, sp_r = st.columns([4, 1, 1, 1, 4], gap="small")
+# Keep the 3 nav buttons in ONE ROW.
+st.markdown('<div id="navrow"></div>', unsafe_allow_html=True)
+nav_home_col, nav_new_col, nav_end_col = st.columns([1, 1, 1], gap="small")
 
-with b_home:
-    go_home = st.button("🏠", key="nav_home", use_container_width=True)
-with b_new:
-    new_conv = st.button("🆕", key="nav_new", use_container_width=True)
-with b_end:
-    end_conv = st.button("⏹", key="nav_end", use_container_width=True)
+with nav_home_col:
+    go_home = st.button("🏠", key="nav_home", use_container_width=False)
+with nav_new_col:
+    new_conv = st.button("🆕", key="nav_new", use_container_width=False)
+with nav_end_col:
+    end_conv = st.button("⏹", key="nav_end", use_container_width=False)
 
 if go_home:
     st.session_state.page = "home"
