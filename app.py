@@ -176,7 +176,7 @@ if "page" not in st.session_state:
     st.session_state.page = "home"  # home | conversation | review
 
 if "scenario" not in st.session_state:
-    st.session_state.scenario = "☕ Ordering coffee / food"
+    st.session_state.scenario = "Ordering coffee / food"
 
 if "show_tutor" not in st.session_state:
     st.session_state.show_tutor = True
@@ -238,19 +238,19 @@ if st.session_state.page == "home":
     st.session_state.scenario = st.selectbox(
         "Choose a scenario",
         [
-            "☕ Ordering coffee / food",
-            "🚆 Buying tickets / transport",
-            "🚶 Asking directions",
+            "Ordering coffee / food",
+            "uying tickets / transport",
+            "Asking directions",
         ],
         index=[
-            "☕ Ordering coffee / food",
-            "🚆 Buying tickets / transport",
-            "🚶 Asking directions",
+            "Ordering coffee / food",
+            "Buying tickets / transport",
+            "Asking directions",
         ].index(st.session_state.scenario)
         if st.session_state.scenario in [
-            "☕ Ordering coffee / food",
-            "🚆 Buying tickets / transport",
-            "🚶 Asking directions",
+            "Ordering coffee / food",
+            "Buying tickets / transport",
+            "Asking directions",
         ]
         else 0,
     )
