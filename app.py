@@ -411,10 +411,28 @@ st.markdown(
         padding: 0.5rem;
         background: linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0));
         z-index: 5;
+        display: flex;
+        gap: 0.6rem;
+        justify-content: center;
+        align-items: center;
       }
-      .scenario-controls [data-testid="stButton"] button {
-        font-size: 1.15rem;
-        padding: 0.35rem 0.2rem;
+      .scenario-controls .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-size: 1.35rem;
+        line-height: 1;
+        background: rgba(255,255,255,0.18);
+        border: 1px solid rgba(255,255,255,0.25);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+      .scenario-controls .icon-btn:active {
+        transform: translateY(1px);
       }
       .interaction-panel {
         height: 40%;
@@ -447,49 +465,62 @@ st.markdown(
 # Open the fixed layout wrapper
 st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 
-# --- Scenario panel (60%) ---
-st.markdown('<div class="scenario-panel">', unsafe_allow_html=True)
+# ------------------
+# Scenario panel (60%)
+# IMPORTANT: Streamlit markdown blocks don't share DOM across calls.
+# To reliably render a full-bleed background + overlay avatar + bottom icon bar,
+# we render the scenario panel as ONE HTML block.
+# ------------------
 
-# Scenario image fills the entire panel; avatar is overlaid.
+# Handle icon actions via query params so the icon bar can live inside HTML.
+try:
+    _qp = st.query_params
+    _action = _qp.get("action", "")
+except Exception:
+    _qp = None
+    _action = ""
+
+if _action in {"home", "new", "end"}:
+    if _qp is not None:
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+    if _action == "home":
+        st.session_state.page = "home"
+        st.rerun()
+    if _action == "new":
+        reset_conversation_state(clear_log=True)
+        st.rerun()
+    if _action == "end":
+        archive_active_interaction()
+        st.session_state.page = "review"
+        st.rerun()
+
 bg_path, av_path = get_scenario_assets(st.session_state.scenario)
 bg_uri = _file_to_data_uri(bg_path)
 av_uri = _file_to_data_uri(av_path)
 
-if bg_uri:
-    avatar_html = f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""
-    st.markdown(
-        f"""
-        <div class='scenario-media'>
-          <div class='bg' style="background-image:url('{bg_uri}');"></div>
-          {avatar_html}
-          <div class='scenario-badge'>{st.session_state.scenario}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-else:
-    st.info("Scenario image not found. Add files under assets/backgrounds and assets/avatars.")
+scenario_html = f"""
+<div class="scenario-panel">
+  <div class="scenario-media">
+    <div class="bg" style="background-image:url('{bg_uri or ''}');"></div>
+    {f"<img class='scenario-avatar' src='{av_uri}'/>" if av_uri else ""}
+    <div class="scenario-badge">{st.session_state.scenario}</div>
 
-# Bottom button row (icons only)
-st.markdown('<div class="scenario-controls">', unsafe_allow_html=True)
-btn_a, btn_b, btn_c = st.columns([1, 1, 1])
-with btn_a:
-    if st.button("🏠", key="home_btn", use_container_width=True):
-        st.session_state.page = "home"
-        st.rerun()
-with btn_b:
-    if st.button("🆕", key="new_convo_btn", use_container_width=True):
-        reset_conversation_state(clear_log=True)
-        st.rerun()
-with btn_c:
-    if st.button("⏹", key="end_convo_btn", use_container_width=True):
-        archive_active_interaction()
-        st.session_state.page = "review"
-        st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
+    <div class="scenario-controls">
+      <a class="icon-btn" href="?action=home" aria-label="Home">🏠</a>
+      <a class="icon-btn" href="?action=new" aria-label="New Conversation">🆕</a>
+      <a class="icon-btn" href="?action=end" aria-label="End Conversation">⏹</a>
+    </div>
+  </div>
+</div>
+"""
 
-# Close scenario panel, open interaction panel + scrollbox
-st.markdown('</div><div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
+st.markdown(scenario_html, unsafe_allow_html=True)
+
+# Open interaction panel + scrollbox
+st.markdown('<div class="interaction-panel"><div class="interaction-scrollbox">', unsafe_allow_html=True)
 
 
 # ================== SCENARIO STATE MACHINE ==================
