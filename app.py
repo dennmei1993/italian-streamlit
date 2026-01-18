@@ -294,14 +294,14 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    #st.divider()
+    st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    #st.divider()
+    st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
@@ -403,9 +403,9 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 # ------------------ Scenario Panel ------------------
 
 # Mobile/Streamlit note:
-# On iOS/mobile, Streamlit may collapse `st.columns()` into a vertical stack.
-# We anchor a tiny marker (`#navrow`) and apply CSS to the *next* horizontal block
-# to force a single-row layout and compact icon buttons.
+# On iOS/mobile, Streamlit can collapse `st.columns()` into a vertical stack.
+# To guarantee a single-row nav on phones, we render the nav as HTML links (query params)
+# and handle the click server-side via `st.query_params`.
 
 st.markdown(
     """
@@ -420,59 +420,72 @@ st.markdown(
       /* Prevent accidental horizontal overflow on mobile */
       html, body { overflow-x: hidden; }
 
-      /* ----- NAV ROW (ONLY) ----- */
-      #navrow + div[data-testid="stHorizontalBlock"]{
-        flex-wrap: nowrap !important;
-        justify-content: center !important;
-        gap: 0.6rem !important;
+      /* ----- NAV ROW (HTML) ----- */
+      .navrow {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin: 6px 0 10px 0;
+        width: 100%;
       }
-      #navrow + div[data-testid="stHorizontalBlock"] > div{
-        flex: 0 0 auto !important;
-        width: auto !important;
+      .navbtn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        width: 54px;
+        min-width: 54px;
+        height: 44px;
+        border-radius: 14px;
+        text-decoration: none;
+        font-size: 22px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.14);
+        box-shadow: 0 2px 12px rgba(0,0,0,0.25);
       }
-      #navrow + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button{
-        width: 56px !important;
-        min-width: 56px !important;
-        height: 44px !important;
-        padding: 0.25rem 0 !important;
-        font-size: 1.25rem !important;
-        border-radius: 14px !important;
+      .navbtn:active {
+        transform: scale(0.98);
       }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# Keep the 3 nav buttons in ONE ROW.
-st.markdown('<div id="navrow"></div>', unsafe_allow_html=True)
-nav_home_col, nav_new_col, nav_end_col = st.columns([1, 1, 1], gap="small")
-
-with nav_home_col:
-    go_home = st.button("🏠", key="nav_home", use_container_width=False)
-with nav_new_col:
-    new_conv = st.button("🆕", key="nav_new", use_container_width=False)
-with nav_end_col:
-    end_conv = st.button("⏹", key="nav_end", use_container_width=False)
-
-if go_home:
-    st.session_state.page = "home"
+# --- Nav click handling via query params ---
+nav_action = _get_query_param("nav")
+if nav_action:
+    # Clear params first to avoid repeated triggers on rerun
+    _clear_query_params()
+    if nav_action == "home":
+        st.session_state.page = "home"
+    elif nav_action == "new":
+        reset_conversation_state(clear_log=True)
+        st.session_state.page = "conversation"
+    elif nav_action == "end":
+        archive_active_interaction()
+        st.session_state.page = "review"
     st.rerun()
 
-if new_conv:
-    reset_conversation_state(clear_log=True)
-    st.rerun()
-
-if end_conv:
-    archive_active_interaction()
-    st.session_state.page = "review"
-    st.rerun()
+# Render compact nav row (always one row, not Streamlit columns/buttons)
+st.markdown(
+    """
+    <div class="navrow">
+      <a class="navbtn" href="?nav=home" aria-label="Home">🏠</a>
+      <a class="navbtn" href="?nav=new" aria-label="New Conversation">🆕</a>
+      <a class="navbtn" href="?nav=end" aria-label="End Conversation">⏹</a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
 av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
 bg_abs = _abs_asset_path(bg_rel)
 av_abs = _abs_asset_path(av_rel)
 
-# st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
 # Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
 bg_uri = _file_to_data_uri(bg_rel)
