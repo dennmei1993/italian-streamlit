@@ -358,54 +358,43 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 st.markdown(
     """
     <style>
-      /* Mobile: tighten overall top padding so Home fits better on one screen */
-      @media (max-width: 480px) {
-        section.main > div.block-container { padding-top: 1.0rem !important; }
-        h1 { font-size: 2.2rem !important; line-height: 1.05 !important; }
-      }
+  /* Mobile: tighten overall top padding so Home fits better on one screen */
+  @media (max-width: 480px) {
+    section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.5rem !important; }
+    h1 { font-size: 2.0rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
+    p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
+  }
 
-      /* Keep 3 buttons in a single row even on narrow screens */
-      div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
-      /* Make icon buttons compact (do NOT use use_container_width=True) */
-      div[data-testid="stButton"] > button {
-        padding: 0.45rem 0.65rem !important;
-        min-width: 0 !important;
-        font-size: 1.25rem !important;
-        border-radius: 14px !important;
-      }
-      /* Center buttons inside their columns */
-      div[data-testid="column"] div[data-testid="stButton"] {
-        display: flex;
-        justify-content: center;
-      }
-    </style>
+  /* Keep Streamlit horizontal blocks from wrapping in our button rows */
+  div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+
+  /* Make icon buttons compact */
+  div[data-testid="stButton"] > button {
+    padding: 0.45rem 0.60rem !important;
+    min-width: 56px !important;
+    height: 44px !important;
+    font-size: 1.25rem !important;
+    border-radius: 14px !important;
+  }
+
+  /* Center buttons within their columns */
+  div[data-testid="column"] div[data-testid="stButton"] {
+    display: flex;
+    justify-content: center;
+  }
+</style>
     """,
     unsafe_allow_html=True,
 )
 
-# Marker element so we can style JUST this nav row's horizontal block
-st.markdown('<div id="scenario-nav-row"></div>', unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <style>
-      /* Constrain the nav row width so the 3 icon buttons stay grouped on mobile */
-      #scenario-nav-row + div[data-testid="stHorizontalBlock"] {
-        max-width: 340px;
-        margin-left: auto;
-        margin-right: auto;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-btn1, btn2, btn3 = st.columns(3, gap="small")
-with btn1:
+# Use extra spacer columns so the 3 icon buttons stay grouped on mobile.
+# This avoids relying on fragile CSS sibling selectors.
+sp1, c1, c2, c3, sp2 = st.columns([2, 1, 1, 1, 2], gap="small")
+with c1:
     go_home = st.button("🏠", key="nav_home")
-with btn2:
+with c2:
     new_conv = st.button("🆕", key="nav_new")
-with btn3:
+with c3:
     end_conv = st.button("⏹", key="nav_end")
 
 if go_home:
@@ -414,7 +403,6 @@ if go_home:
 
 if new_conv:
     reset_conversation_state(clear_log=True)
-    # stay on conversation page
     st.rerun()
 
 if end_conv:
