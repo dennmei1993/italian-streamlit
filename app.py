@@ -121,6 +121,33 @@ def _file_to_data_uri(rel_path: str) -> str:
         return ""
 
 
+def _get_query_param(name: str) -> str:
+    """Compat helper for reading query params across Streamlit versions."""
+    try:
+        v = st.query_params.get(name)
+        if isinstance(v, list):
+            return v[0] if v else ""
+        return v or ""
+    except Exception:
+        try:
+            qp = st.experimental_get_query_params()
+            v = qp.get(name, [""])
+            return v[0] if v else ""
+        except Exception:
+            return ""
+
+
+def _clear_query_params() -> None:
+    """Compat helper to clear query params after handling an action."""
+    try:
+        st.query_params.clear()
+    except Exception:
+        try:
+            st.experimental_set_query_params()
+        except Exception:
+            pass
+
+
 # ================== OPTIONAL VOCAB ==================
 vocab = []
 try:
@@ -320,53 +347,53 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
     return candidates[0] if candidates else ""
 
 
-
-
 # ------------------ Scenario Panel ------------------
-# Render background + avatar as a single HTML block (reliable overlay),
-# and keep the action buttons in a single Streamlit row.
-scenario_container = st.container()
-with scenario_container:
-    # Resolve assets
-    bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
-    av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
-    bg_uri = _file_to_data_uri(bg_rel) if bg_rel else ""
-    av_uri = _file_to_data_uri(av_rel) if av_rel else ""
+# We render the scene (background + avatar overlay + icon bar) as ONE HTML block,
+# so the overlay works reliably on mobile.
+action = _get_query_param("action").lower().strip()
+if action in {"home", "new", "end"}:
+    if action == "home":
+        st.session_state.page = "home"
+    elif action == "new":
+        reset_conversation_state(clear_log=True)
+    elif action == "end":
+        archive_active_interaction()
+        st.session_state.page = "review"
+    _clear_query_params()
+    st.rerun()
 
-    # Background fills the scenario area (cover). Avatar overlays bottom-right.
-    # Height uses viewport units so it behaves nicely on mobile.
-    if bg_uri:
-        components.html(
-            f"""
-            <div style="position:relative; width:100%; height:48vh; border-radius:16px; overflow:hidden;">
-              <div style="position:absolute; inset:0; background-image:url('{bg_uri}'); background-size:cover; background-position:center;"></div>
-              {'<img src="'+av_uri+'" style="position:absolute; right:12px; bottom:12px; width:120px; max-width:35vw; height:auto;" />' if av_uri else ''}
-            </div>
-            """,
-            height=1
-        )
-    else:
-        st.warning(f"Scenario background not found: {bg_rel}")
-        if av_rel and not av_uri:
-            st.caption(f"Avatar not found: {av_rel}")
+bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
+av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
+bg_abs = _abs_asset_path(bg_rel)
+av_abs = _abs_asset_path(av_rel)
 
-    # Bottom row: icon-only buttons
-    c1, c2, c3, c4 = st.columns([1, 1, 1, 6])
-    with c1:
-        if st.button("🏠", key="home_icon", help="Home"):
-            st.session_state.page = "home"
-            st.rerun()
-    with c2:
-        if st.button("🆕", key="new_icon", help="New conversation"):
-            reset_conversation_state(clear_log=True)
-            st.rerun()
-    with c3:
-        if st.button("⏹", key="end_icon", help="End & review"):
-            archive_active_interaction()
-            st.session_state.page = "review"
-            st.rerun()
+# Use a tiny HTML block ONLY for the icon row. (Native st.columns() will stack on phones.)
+icon_row_html = """
+<style>
+  .iconbar {display:flex;gap:12px;justify-content:space-between;margin:0 0 10px 0;}
+  .iconbtn {flex:1;text-align:center;padding:10px 0;border-radius:12px;
+            border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);
+            color:#fff;text-decoration:none;font-size:22px;line-height:1;}
+</style>
+<div class="iconbar">
+  <a class="iconbtn" href="?action=home" title="Home">🏠</a>
+  <a class="iconbtn" href="?action=new" title="New Conversation">🆕</a>
+  <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
+</div>
+"""
+components.html(icon_row_html, height=64, scrolling=False)
 
-    st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+
+if bg_rel and os.path.exists(bg_abs):
+    st.image(bg_abs, use_container_width=True)
+else:
+    st.warning(f"Scenario background not found: {bg_rel}")
+
+if av_rel and os.path.exists(av_abs):
+    st.image(av_abs, width=160)
+else:
+    st.warning(f"Scenario avatar not found: {av_rel}")
 
 
 # ------------------ Interaction Section ------------------
