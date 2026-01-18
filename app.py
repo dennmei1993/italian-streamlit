@@ -180,6 +180,10 @@ if "messages" not in st.session_state:
 if "active_interaction" not in st.session_state:
     st.session_state.active_interaction = None
 
+# Archived conversation history for Review page
+if "conversation_log" not in st.session_state:
+    st.session_state.conversation_log = []
+
 if "turn_count" not in st.session_state:
     st.session_state.turn_count = 0
 
@@ -193,9 +197,11 @@ if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
 
-def reset_conversation_state(clear_log=True):
+def reset_conversation_state(clear_log: bool = True) -> None:
     """Reset the in-session conversation state. Optionally clear the archived log."""
-
+    # Ensure log exists
+    if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
     if clear_log:
         st.session_state.conversation_log = []
 
@@ -208,12 +214,23 @@ def reset_conversation_state(clear_log=True):
 
 
 
-def archive_active_interaction():
+def archive_active_interaction() -> None:
+    """Move the currently displayed interaction into conversation_log (if not already)."""
     turn = st.session_state.get("active_interaction")
     if not turn:
         return
 
-    st.session_state.conversation_log.append(turn)
+    if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
+
+    # Avoid duplicating the same last turn
+    if st.session_state.conversation_log:
+        last = st.session_state.conversation_log[-1]
+        if (last.get("user") == turn.get("user")) and (last.get("partner") == turn.get("partner")):
+            st.session_state.active_interaction = None
+            return
+
+    st.session_state.conversation_log.append(dict(turn))
     st.session_state.active_interaction = None
 
 
@@ -294,6 +311,8 @@ if st.session_state.page == "home":
 
 # ================== REVIEW PAGE (End Conversation) ==================
 if st.session_state.page == "review":
+    # Safety: ensure the last on-screen turn is included in the log
+    archive_active_interaction()
     st.title("📜 Conversation Review")
     st.caption("Here is your full conversation history from the last session.")
 
@@ -637,8 +656,8 @@ if audio_value is not None:
     if already_processed:
         st.caption("✅ Recording already processed.")
     else:
-        # New submission: archive previous interaction and clear the interaction panel content
-        archive_active_interaction()
+        # New submission: clear the Interaction panel immediately (history is logged per-turn)
+        st.session_state.active_interaction = None
         st.session_state.last_audio_hash = audio_hash
         st.session_state.last_user_input = ""  # allow same sentence in new turn if needed
 
@@ -792,6 +811,11 @@ If fully natural: Looks good 👍
         "user_audio": user_audio,
         "translation": None,
     }
+    # Log this completed turn immediately for the Review page
+    if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
+    if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
+        st.session_state.conversation_log.append(dict(st.session_state.active_interaction))
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
 turn = st.session_state.active_interaction
@@ -831,5 +855,4 @@ if turn:
                     st.markdown(f"**Tip:** {tip}")
 else:
     st.info("Record a message to start.")
-
 
