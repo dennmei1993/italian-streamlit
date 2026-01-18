@@ -11,14 +11,6 @@ import base64
 import mimetypes
 import streamlit.components.v1 as components
 
-# ================== PAGE CONFIG ==================
-st.set_page_config(
-    page_title="Parley",
-    page_icon="🗣️",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-)
-
 # ================== SETUP ==================
 load_dotenv()
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
@@ -204,22 +196,6 @@ if "last_audio_hash" not in st.session_state:
 if "stage" not in st.session_state:
     st.session_state.stage = "ORDERING"
 
-# ================== GLOBAL MOBILE TWEAKS ==================
-st.markdown(
-    """
-<style>
-@media (max-width: 480px) {
-  /* Reduce top whitespace on mobile so Home fits on one screen */
-  section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.6rem !important; }
-  h1 { font-size: 2.05rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
-  h2 { margin-top: 0.6rem !important; }
-  p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
-}
-</style>
-    """,
-    unsafe_allow_html=True,
-)
-
 
 def reset_conversation_state(clear_log: bool) -> None:
     """Reset the in-session conversation state. Optionally clear the archived log."""
@@ -240,37 +216,40 @@ def archive_active_interaction() -> None:
         st.session_state.active_interaction = None
 
 
+# ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
+# On mobile/Streamlit Cloud, clicking a button that uses query-params can
+# trigger a full page reload which may reset session_state back to HOME.
+# If we only process actions *inside* the Conversation page, the app may
+# render Home first and never reach the handler.
+#
+# We support both `?action=...` (used by our icon buttons) and `?nav=...`
+# (legacy).
+nav_action = _get_query_param("action") or _get_query_param("nav")
+if nav_action:
+    nav_action = str(nav_action).lower().strip()
+
+    if nav_action == "home":
+        st.session_state.page = "home"
+        _clear_query_params()
+        st.rerun()
+
+    if nav_action == "new":
+        # Start a fresh conversation
+        reset_conversation_state()
+        st.session_state.page = "conversation"
+        _clear_query_params()
+        st.rerun()
+
+    if nav_action == "end":
+        # Archive current turn and move to review page
+        archive_active_interaction()
+        st.session_state.page = "review"
+        _clear_query_params()
+        st.rerun()
+
+
 # ================== HOME PAGE ==================
 if st.session_state.page == "home":
-    st.markdown(
-        """
-        <style>
-          /* Home page: reduce vertical spacing on mobile so everything fits */
-          @media (max-width: 480px) {
-            section.main > div.block-container {
-              padding-top: 0.25rem !important;
-              padding-bottom: 0.5rem !important;
-            }
-            h1 {
-              font-size: 2.0rem !important;
-              line-height: 1.02 !important;
-              margin-top: 0.15rem !important;
-              margin-bottom: 0.35rem !important;
-            }
-            div[data-testid="stCaptionContainer"] {
-              margin-bottom: 0.35rem !important;
-            }
-            div[data-testid="stDivider"] {
-              margin-top: 0.6rem !important;
-              margin-bottom: 0.6rem !important;
-            }
-          }
-          html, body { overflow-x: hidden; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     st.title("🗣️ Language Conversation Tutor")
     st.caption("Select a scenario and settings, then start the conversation.")
 
@@ -294,14 +273,14 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    # st.divider()
+    st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    # st.divider()
+    st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
@@ -401,91 +380,31 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 
 
 # ------------------ Scenario Panel ------------------
-
-# Mobile/Streamlit note:
-# On iOS/mobile, Streamlit can collapse `st.columns()` into a vertical stack.
-# To guarantee a single-row nav on phones, we render the nav as HTML links (query params)
-# and handle the click server-side via `st.query_params`.
-
-st.markdown(
-    """
-    <style>
-      /* Mobile: tighten overall top padding so Home fits better on one screen */
-      @media (max-width: 480px) {
-        section.main > div.block-container { padding-top: 0.25rem !important; padding-bottom: 0.5rem !important; }
-        h1 { font-size: 1.9rem !important; line-height: 1.02 !important; margin-top: 0.15rem !important; margin-bottom: 0.35rem !important; }
-        div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stSelectbox"]) { margin-top: 0.15rem !important; }
-      }
-
-      /* Prevent accidental horizontal overflow on mobile */
-      html, body { overflow-x: hidden; }
-
-      /* ----- NAV ROW (HTML) ----- */
-      .navrow {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: nowrap;
-        justify-content: center;
-        align-items: center;
-        gap: 10px;
-        margin: 6px 0 10px 0;
-        width: 100%;
-      }
-      .navbtn {
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        width: 54px;
-        min-width: 54px;
-        height: 44px;
-        border-radius: 14px;
-        text-decoration: none;
-        font-size: 22px;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.14);
-        box-shadow: 0 2px 12px rgba(0,0,0,0.25);
-      }
-      .navbtn:active {
-        transform: scale(0.98);
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# --- Nav click handling via query params ---
-nav_action = _get_query_param("nav")
-if nav_action:
-    # Clear params first to avoid repeated triggers on rerun
-    _clear_query_params()
-    if nav_action == "home":
-        st.session_state.page = "home"
-    elif nav_action == "new":
-        reset_conversation_state(clear_log=True)
-        st.session_state.page = "conversation"
-    elif nav_action == "end":
-        archive_active_interaction()
-        st.session_state.page = "review"
-    st.rerun()
-
-# Render compact nav row (always one row, not Streamlit columns/buttons)
-st.markdown(
-    """
-    <div class="navrow">
-      <a class="navbtn" href="?nav=home" aria-label="Home">🏠</a>
-      <a class="navbtn" href="?nav=new" aria-label="New Conversation">🆕</a>
-      <a class="navbtn" href="?nav=end" aria-label="End Conversation">⏹</a>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# We render the scene (background + avatar overlay + icon bar) as ONE HTML block,
+# so the overlay works reliably on mobile.
 
 bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
 av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
 bg_abs = _abs_asset_path(bg_rel)
 av_abs = _abs_asset_path(av_rel)
 
-# st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+# Use a tiny HTML block ONLY for the icon row. (Native st.columns() will stack on phones.)
+icon_row_html = """
+<style>
+  .iconbar {display:flex;gap:12px;justify-content:space-between;margin:0 0 10px 0;}
+  .iconbtn {flex:1;text-align:center;padding:10px 0;border-radius:12px;
+            border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);
+            color:#fff;text-decoration:none;font-size:22px;line-height:1;}
+</style>
+<div class="iconbar">
+  <a class="iconbtn" href="?action=home" title="Home">🏠</a>
+  <a class="iconbtn" href="?action=new" title="New Conversation">🆕</a>
+  <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
+</div>
+"""
+components.html(icon_row_html, height=64, scrolling=False)
+
+st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
 # Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
 bg_uri = _file_to_data_uri(bg_rel)
@@ -666,7 +585,7 @@ if not st.session_state.messages:
 
 
 # ================== USER INPUT ==================
-audio_value = st.audio_input("Press Mic sign to record and stop.")
+audio_value = st.audio_input("Record a voice message")
 
 transcribed_text = ""
 final_audio_input = ""
