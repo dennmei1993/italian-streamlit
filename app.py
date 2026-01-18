@@ -372,67 +372,47 @@ def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
 
 
 # ------------------ Scenario Panel ------------------
-# IMPORTANT:
-# Do NOT use HTML <a href="?..."></a> inside components.html() for navigation.
-# components.html renders in an iframe, and clicks will only change the iframe URL
-# (not Streamlit's main URL), so query-param actions won't reach Python.
-#
-# Use native Streamlit buttons for actions, and apply CSS to keep them in one row on mobile.
+
+# Mobile/Streamlit note:
+# Streamlit's `st.columns()` can reflow differently on iOS. The most reliable way to keep
+# 3 icon buttons grouped on one row is to use 5 columns with wide side spacers.
 
 st.markdown(
     """
     <style>
-  /* Mobile: tighten overall top padding so Home fits better on one screen */
-  @media (max-width: 480px) {
-    section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.5rem !important; }
-    h1 { font-size: 2.0rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
-    p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
-  }
+      /* Mobile: tighten overall top padding so Home fits better on one screen */
+      @media (max-width: 480px) {
+        section.main > div.block-container { padding-top: 0.35rem !important; padding-bottom: 0.5rem !important; }
+        h1 { font-size: 2.0rem !important; line-height: 1.02 !important; margin-bottom: 0.35rem !important; }
+        p { margin-top: 0.2rem !important; margin-bottom: 0.4rem !important; }
+      }
 
-  /* IMPORTANT: don't globally force nowrap; it can cause horizontal overflow on mobile. */
+      /* Make ALL icon-ish buttons reasonably compact (safe default) */
+      div[data-testid="stButton"] > button {
+        min-width: 44px !important;
+        height: 44px !important;
+        padding: 0.35rem 0.55rem !important;
+        font-size: 1.25rem !important;
+        border-radius: 14px !important;
+      }
 
-  /* Force the NAV button row to stay on one line and stay grouped/centered.
-     We target the horizontal block that immediately follows the #navrow marker. */
-  #navrow + div[data-testid="stHorizontalBlock"] {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    justify-content: center !important;
-    gap: 12px !important;
-  }
-  #navrow + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-    flex: 0 0 auto !important;
-    width: auto !important;
-  }
-
-  /* Make icon buttons compact */
-  div[data-testid="stButton"] > button {
-    padding: 0.45rem 0.60rem !important;
-    min-width: 56px !important;
-    height: 44px !important;
-    font-size: 1.25rem !important;
-    border-radius: 14px !important;
-  }
-
-  /* Center buttons within their columns */
-  #navrow + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] {
-    display: flex;
-    justify-content: center;
-  }
-</style>
+      /* Prevent accidental horizontal overflow on mobile */
+      html, body { overflow-x: hidden; }
+    </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div id="navrow"></div>', unsafe_allow_html=True)
+# Keep the 3 nav buttons grouped + centered using spacer columns.
+# Layout: [spacer, home, new, end, spacer]
+sp_l, b_home, b_new, b_end, sp_r = st.columns([4, 1, 1, 1, 4], gap="small")
 
-# Use 3 columns only; the CSS above constrains them to auto width and centers the group.
-c1, c2, c3 = st.columns(3, gap="small")
-with c1:
-    go_home = st.button("🏠", key="nav_home")
-with c2:
-    new_conv = st.button("🆕", key="nav_new")
-with c3:
-    end_conv = st.button("⏹", key="nav_end")
+with b_home:
+    go_home = st.button("🏠", key="nav_home", use_container_width=True)
+with b_new:
+    new_conv = st.button("🆕", key="nav_new", use_container_width=True)
+with b_end:
+    end_conv = st.button("⏹", key="nav_end", use_container_width=True)
 
 if go_home:
     st.session_state.page = "home"
