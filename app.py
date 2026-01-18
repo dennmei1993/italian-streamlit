@@ -192,6 +192,30 @@ def should_show_tutor(turn_count: int, english: bool, repaired: bool) -> bool:
     return turn_count % 3 == 0
 
 
+def parse_tutor_output(tutor_text: str) -> dict:
+    """Extract structured fields from tutor output.
+
+    Expected V1.1+ format:
+    - Recommended: <Italian>
+    - Tip: <short English tip>
+    Or: Looks good 👍
+    """
+    text = (tutor_text or "").strip()
+    out = {"recommended": "", "tip": "", "raw": text}
+    if not text or text.lower().startswith("looks good"):
+        return out
+
+    # Allow bullets with '-' or '•'
+    rec_m = re.search(r"(?:^|\n)\s*[\-\u2022]\s*Recommended\s*:\s*(.+)", text, flags=re.IGNORECASE)
+    tip_m = re.search(r"(?:^|\n)\s*[\-\u2022]\s*Tip\s*:\s*(.+)", text, flags=re.IGNORECASE)
+
+    if rec_m:
+        out["recommended"] = rec_m.group(1).strip()
+    if tip_m:
+        out["tip"] = tip_m.group(1).strip()
+    return out
+
+
 # ================== STAGE MACHINES (V1.1 minimal) ==================
 
 def update_stage_cafe(user_text: str, current: str) -> str:
@@ -445,6 +469,8 @@ if user_input and user_input != st.session_state.last_user_input:
 
     # ----- Tutor call (separate context) -----
     tutor_text = ""
+    tutor_struct = {"recommended": "", "tip": "", "raw": ""}
+    recommended_audio_path = ""
     if tutor_active:
         tutor_system = (
             "You are a language tutor. Give short, encouraging feedback in English, "
@@ -452,8 +478,7 @@ if user_input and user_input != st.session_state.last_user_input:
             "Analyze the user's sentence and the partner reply to provide helpful tips. "
             "Be concise. Do not explain grammar in depth.\n\n"
             "Output format:\n"
-            "- Clean version: <Italian>\n"
-            "- More natural version: <Italian>\n"
+            "- Recommended: <Italian>\n"
             "- Tip: <short English tip>\n"
             "If the user's sentence is already natural, say exactly: Looks good 👍"
         )
@@ -479,6 +504,15 @@ if user_input and user_input != st.session_state.last_user_input:
             tutor_text = ""
             st.warning(f"Tutor tips failed to generate: {e}")
 
+    tutor_struct = parse_tutor_output(tutor_text)
+
+    # If we got a recommended sentence, generate audio for it (so it can be replayed)
+    if tutor_struct.get("recommended"):
+        try:
+            recommended_audio_path = synthesize_tts(tutor_struct["recommended"])
+        except Exception:
+            recommended_audio_path = ""
+
     # ----- TTS -----
     partner_audio_path = ""
     try:
@@ -498,7 +532,10 @@ if user_input and user_input != st.session_state.last_user_input:
         {
             "user": user_input,
             "partner": partner_text,
-            "tutor": tutor_text,
+            "tutor_raw": tutor_text,
+            "tutor_recommended": tutor_struct.get("recommended", ""),
+            "tutor_tip": tutor_struct.get("tip", ""),
+            "tutor_recommended_audio": recommended_audio_path,
             "partner_audio": partner_audio_path,
             "user_audio": user_audio_path,
             "translation": None,
@@ -533,9 +570,25 @@ if turns:
             if turn.get("translation"):
                 st.markdown(f"🟦 *English:* {turn['translation']}")
 
-        if turn.get("tutor"):
+        tutor_raw = (turn.get("tutor_raw") or "").strip()
+        tutor_recommended = (turn.get("tutor_recommended") or "").strip()
+        tutor_tip = (turn.get("tutor_tip") or "").strip()
+        tutor_rec_audio = turn.get("tutor_recommended_audio")
+
+        if tutor_raw or tutor_recommended or tutor_tip:
             st.markdown("**Tutor:**")
-            st.markdown(turn["tutor"])
+
+            # If the tutor says it's already good, show that message and stop.
+            if tutor_raw.lower().startswith("looks good"):
+                st.markdown(tutor_raw)
+            else:
+                if tutor_recommended:
+                    st.markdown(f"**Recommended:** {tutor_recommended}")
+                    if tutor_rec_audio and os.path.exists(tutor_rec_audio):
+                        st.audio(tutor_rec_audio)
+
+                if tutor_tip:
+                    st.markdown(f"**Tip:** {tutor_tip}")
 
         st.divider()
 else:
