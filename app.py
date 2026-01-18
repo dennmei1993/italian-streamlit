@@ -385,15 +385,70 @@ components.html(icon_row_html, height=64, scrolling=False)
 
 st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
-if bg_rel and os.path.exists(bg_abs):
-    st.image(bg_abs, use_container_width=True)
-else:
-    st.warning(f"Scenario background not found: {bg_rel}")
+# Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
+bg_uri = _file_to_data_uri(bg_rel)
+av_uri = _file_to_data_uri(av_rel)
 
-if av_rel and os.path.exists(av_abs):
-    st.image(av_abs, width=160)
-else:
+if not bg_uri:
+    st.warning(f"Scenario background not found: {bg_rel}")
+if av_rel and (not av_uri):
     st.warning(f"Scenario avatar not found: {av_rel}")
+
+scene_html = f"""
+<style>
+  .scene-wrap {{
+    position: relative;
+    width: 100%;
+    height: 340px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+  }}
+  .scene-bg {{
+    position: absolute;
+    inset: 0;
+    background-image: url('{bg_uri}');
+    background-size: cover;
+    background-position: center;
+    filter: none;
+  }}
+  .scene-dim {{
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.10), rgba(0,0,0,0.45));
+  }}
+  .scene-avatar {{
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    width: 160px;
+    max-width: 45%;
+    height: auto;
+    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.45));
+  }}
+  .scene-missing {{
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.75);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    font-size: 14px;
+    padding: 16px;
+    text-align: center;
+  }}
+</style>
+
+<div class="scene-wrap">
+  {'<div class="scene-bg"></div><div class="scene-dim"></div>' if bg_uri else '<div class="scene-missing">(Missing scenario background)</div>'}
+  {'<img class="scene-avatar" src="' + av_uri + '" alt="avatar" />' if av_uri else ''}
+</div>
+"""
+
+# Height is fixed for iframe sizing; adjust if you want taller/shorter scene.
+components.html(scene_html, height=360, scrolling=False)
 
 
 # ------------------ Interaction Section ------------------
