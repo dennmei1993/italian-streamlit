@@ -266,28 +266,54 @@ playback_my_sentence = bool(st.session_state.playback_my_sentence)
 st.markdown(
     """
     <style>
+      /* Disable outer scrolling; only the interaction panel scrolls */
       html, body { height: 100%; overflow: hidden; }
-      section.main { height: 100vh; height: 100dvh; overflow: hidden; }
-      .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
 
-      .page-wrap {
+      /* Make the Streamlit app container fill the viewport */
+      div[data-testid="stAppViewContainer"],
+      section.main {
         height: 100vh;
         height: 100dvh;
+        overflow: hidden;
+      }
+
+      /* Tighten padding so panels fit on mobile */
+      div[data-testid="stAppViewBlockContainer"],
+      .block-container {
+        height: 100%;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+      }
+
+      /* Fixed layout wrapper anchored to the viewport */
+      .page-wrap {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        padding: 0.5rem 0.75rem;
+        box-sizing: border-box;
       }
+
+      /* 60/40 split that won't stretch due to content */
       .scenario-panel {
-        flex: 6 0 0;          /* 60% */
+        height: 60%;
+        flex: 0 0 auto;
         min-height: 0;
-        overflow: hidden;     /* keep fixed */
-        padding-bottom: 0.25rem;
+        overflow: hidden;
       }
       .interaction-panel {
-        flex: 4 0 0;          /* 40% */
+        height: 40%;
+        flex: 0 0 auto;
         min-height: 0;
-        overflow: hidden;     /* internal scrollbox handles scrolling */
+        overflow: hidden;
       }
+
+      /* Only this area scrolls */
       .interaction-scrollbox {
         height: 100%;
         overflow-y: auto;
@@ -295,15 +321,19 @@ st.markdown(
         padding-right: 0.5rem;
         border-top: 1px solid rgba(49, 51, 63, 0.18);
       }
-      /* Make the page a bit tighter on small screens */
+
+      /* iPhone safe area (prevents content sitting under the home indicator) */
+      @supports (padding: env(safe-area-inset-bottom)) {
+        .page-wrap { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+      }
+
       @media (max-width: 600px) {
-        .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+        .page-wrap { padding-left: 0.6rem; padding-right: 0.6rem; }
       }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 # Open the fixed layout wrapper
 st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 
@@ -446,8 +476,6 @@ OPTIONAL_TUTOR:
 if not st.session_state.messages:
     st.session_state.messages.append({"role": "system", "content": system_prompt})
 
-
-interaction_panel = st.container()
 
 with interaction_panel:
     # ================== USER INPUT ==================
