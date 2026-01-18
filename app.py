@@ -275,7 +275,7 @@ if st.session_state.page == "home":
     st.caption("Select a scenario and settings, then start the conversation.")
 
     st.session_state.scenario = st.selectbox(
-        "Choose a scenario",
+        #"Choose a scenario",
         [
             "Ordering coffee / food",
             "Buying tickets / transport",
