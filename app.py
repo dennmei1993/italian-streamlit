@@ -294,14 +294,14 @@ if st.session_state.page == "home":
         else 0,
     )
 
-    st.divider()
+    # st.divider()
     st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
     st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
     st.session_state.playback_my_sentence = st.toggle(
         "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
     )
 
-    st.divider()
+    # st.divider()
     if st.button("▶ Start"):
         # Start a fresh conversation (also clears any prior log to avoid confusion).
         reset_conversation_state(clear_log=True)
@@ -485,7 +485,7 @@ av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
 bg_abs = _abs_asset_path(bg_rel)
 av_abs = _abs_asset_path(av_rel)
 
-st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+# st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
 # Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
 bg_uri = _file_to_data_uri(bg_rel)
