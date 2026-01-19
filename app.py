@@ -751,6 +751,7 @@ if user_input and user_input != st.session_state.last_user_input:
     partner_raw = partner_resp.choices[0].message.content.strip()
     partner_text = partner_raw.replace("PARTNER:", "").strip() or "Ciao!"
 
+
     # ----- Tutor -----
     tutor_text = ""
     tutor_struct = {"recommended": "", "tip": "", "raw": ""}
@@ -800,17 +801,17 @@ If fully natural: Looks good 👍
             user_audio = ""
 
 # Store as the active interaction (Interaction panel shows only this)
-turn_data = {
-    "user": user_input,
-    "partner": partner_text,
-    "tutor_raw": tutor_text,
-    "tutor_recommended": tutor_struct.get("recommended", ""),
-    "tutor_tip": tutor_struct.get("tip", ""),
-    "tutor_recommended_audio": recommended_audio,
-    "partner_audio": partner_audio,
-    "user_audio": user_audio,
-    "translation": None,
-}
+    turn_data = {
+        "user": user_input,
+        "partner": partner_text,
+        "tutor_raw": tutor_text,
+        "tutor_recommended": tutor_struct.get("recommended", ""),
+        "tutor_tip": tutor_struct.get("tip", ""),
+        "tutor_recommended_audio": recommended_audio,
+        "partner_audio": partner_audio,
+        "user_audio": user_audio,
+        "translation": None,
+    }
 
 # ✅ Critical: log the turn immediately (exactly once) before anything can clear it.
 st.session_state.active_interaction = turn_data
