@@ -7,8 +7,6 @@ import hashlib
 import tempfile
 from secrets import token_hex
 from typing import Any, Dict, List, Optional
-import streamlit.components.v1 as components
-
 
 import streamlit as st
 
@@ -24,22 +22,6 @@ except Exception:
 # PAGE CONFIG
 # =========================================================
 st.set_page_config(page_title="Language Conversation Tutor", page_icon="🗣️", layout="centered")
-
-#===========For Avatar Animation===========
-
-st.markdown("""
-<style>
-/* Avatar wrapper gets "talking" class toggled by JS */
-#avatarWrap.talking img{
-  animation: talkbob 0.16s infinite alternate ease-in-out;
-  filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45)) brightness(1.06);
-}
-@keyframes talkbob{
-  from { transform: translateY(0px) scale(1.00); }
-  to   { transform: translateY(-2px) scale(1.01); }
-}
-</style>
-""", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -82,7 +64,6 @@ def _ensure_sid() -> str:
     # rerun to ensure SID is available everywhere
     st.rerun()
     return sid  # pragma: no cover
-
 
 
 SID = _ensure_sid()
@@ -467,22 +448,8 @@ def _img_to_data_uri(path: str) -> Optional[str]:
     except Exception:
         return None
 
-def _audio_to_data_uri(path: str) -> Optional[str]:
-    """Read an audio file and return a data URI suitable for <audio src=...>."""
-    try:
-        if not path or not os.path.exists(path):
-            return None
-        with open(path, "rb") as f:
-            b = f.read()
-        ext = os.path.splitext(path)[1].lower().replace(".", "")
-        # Most of your TTS output is mp3
-        mime = "audio/mpeg" if ext == "mp3" else "audio/wav"
-        return f"data:{mime};base64,{base64.b64encode(b).decode('utf-8')}"
-    except Exception:
-        return None
 
-
-def render_scene_panel(scenario: str, partner_audio_path: str = "") -> None:
+def render_scene_panel(scenario: str) -> None:
     bg_path = STAGE_BACKGROUNDS.get(scenario, "")
     av_path = STAGE_AVATARS.get(scenario, "")
 
@@ -493,36 +460,25 @@ def render_scene_panel(scenario: str, partner_audio_path: str = "") -> None:
         st.warning(f"Missing background image: {bg_path}")
         return
 
-    # Optional: embed partner audio into the same iframe for reliable JS
-    audio_uri = _audio_to_data_uri(partner_audio_path) if partner_audio_path else None
-
     avatar_html = ""
     if av_uri:
         avatar_html = f"""
-        <div id="avatarWrap" style="position:absolute; right:18px; bottom:0px; width:140px;">
-          <img src="{av_uri}" style="width:140px; height:auto; filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));" />
-        </div>
+        <img src="{av_uri}" style="
+            position:absolute;
+            right:18px;
+            bottom:0px;
+            width:140px;
+            height:auto;
+            filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));
+        " />
         """
 
-    audio_html = ""
-    if audio_uri:
-        audio_html = f"""
-        <div style="position:absolute; left:12px; right:12px; bottom:12px;">
-          <audio id="partnerAudio" controls style="width:100%;">
-            <source src="{audio_uri}" type="audio/mpeg" />
-          </audio>
-        </div>
-        """
-
-    # Use components.html so:
-    # - HTML never shows up as literal text
-    # - JS definitely runs (st.markdown scripts are unreliable)
-    components.html(
+    st.markdown(
         f"""
         <div style="
             position:relative;
             width:100%;
-            height:{260 if audio_uri else 220}px;
+            height:220px;
             border-radius:18px;
             overflow:hidden;
             margin-bottom:10px;
@@ -530,56 +486,27 @@ def render_scene_panel(scenario: str, partner_audio_path: str = "") -> None:
             background-size:cover;
             background-position:center;
         ">
-          <style>
-            #avatarWrap.talking img {{
-              animation: talkbob 0.16s infinite alternate ease-in-out;
-              filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45)) brightness(1.06);
-            }}
-            @keyframes talkbob {{
-              from {{ transform: translateY(0px) scale(1.00); }}
-              to   {{ transform: translateY(-2px) scale(1.01); }}
-            }}
-          </style>
-
-          <div style="position:absolute; inset:0;
-               background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);">
-          </div>
-
-          <div style="
-              position:absolute;
-              left:16px;
-              bottom:{56 if audio_uri else 14}px;
-              color:white;
-              font-size:18px;
-              font-weight:600;
-              text-shadow:0px 2px 12px rgba(0,0,0,0.6);
-              z-index:2;
-          ">
-            {scenario}
-          </div>
-
-          {avatar_html}
-          {audio_html}
-
-          <script>
-            (function() {{
-              const audio = document.getElementById("partnerAudio");
-              const avatar = document.getElementById("avatarWrap");
-              if (!audio || !avatar) return;
-
-              const startTalk = () => avatar.classList.add("talking");
-              const stopTalk  = () => avatar.classList.remove("talking");
-
-              audio.addEventListener("play", startTalk);
-              audio.addEventListener("pause", stopTalk);
-              audio.addEventListener("ended", stopTalk);
-            }})();
-          </script>
+            <div style="
+                position:absolute;
+                inset:0;
+                background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);
+            "></div>
+            <div style="
+                position:absolute;
+                left:16px;
+                bottom:14px;
+                color:white;
+                font-size:18px;
+                font-weight:600;
+                text-shadow:0px 2px 12px rgba(0,0,0,0.6);
+            ">
+                {scenario}
+            </div>
+            {avatar_html}
         </div>
         """,
-        height=(280 if audio_uri else 240),
+        unsafe_allow_html=True,
     )
-
 
 
 # =========================================================
@@ -598,7 +525,7 @@ def nav_bar() -> None:
             st.rerun()
     with c3:
         if st.button("⏹ Review", use_container_width=True):
-            # Treat Review as "closing" the current turn
+    # Treat Review as "closing" the current turn
             archive_active_interaction()
             st.session_state.active_interaction = None
             persist_log_to_disk()
@@ -716,16 +643,14 @@ playback_my_sentence = bool(st.session_state.playback_my_sentence)
 st.title("💬 Conversation")
 nav_bar()
 
-turn = st.session_state.get("active_interaction") or {}
-render_scene_panel(scenario, partner_audio_path=turn.get("partner_audio", ""))
-
+render_scene_panel(scenario)
 
 # If OpenAI isn't configured, still show UI but disable processing
 if CLIENT is None:
     st.info("Add OPENAI_API_KEY in Streamlit Secrets to enable transcription & AI conversation.")
     st.stop()
 
-# st.markdown("### 🎙️ Speak")
+st.markdown("### 🎙️ Speak")
 audio = st.audio_input("Press the mic icon and speak")
 
 def _bytes_from_audio_input(audio_obj: Any) -> Optional[bytes]:
@@ -823,7 +748,7 @@ if audio:
 # ------------------ Interaction Panel ------------------
 turn = st.session_state.get("active_interaction")
 
-# st.markdown("### 🧩 Interaction")
+st.markdown("### 🧩 Interaction")
 if not turn:
     st.info("Record a message to start.")
     st.stop()
@@ -840,56 +765,8 @@ if turn.get("my_sentence_audio") and os.path.exists(turn["my_sentence_audio"]):
     st.audio(turn["my_sentence_audio"])
 
 st.markdown(f"**Partner:** {turn.get('partner','')}")
-
-partner_audio_uri = _audio_to_data_uri(turn.get("partner_audio", ""))
-turn_id = (turn.get("turn_id") or str(int(time.time() * 1000))).replace('"', "")
-audio_element_id = f"partnerAudio_{turn_id}"
-
-if partner_audio_uri:
-    components.html(
-        f"""
-        <div>
-          <audio id="{audio_element_id}" controls style="width:100%;">
-            <source src="{partner_audio_uri}" type="audio/mpeg">
-          </audio>
-        </div>
-
-        <script>
-        (function() {{
-          const audio = document.getElementById("{audio_element_id}");
-          if (!audio) return;
-
-          // Try to find avatar in this iframe first, then in parent document
-          const getAvatar = () =>
-            document.getElementById("avatarWrap") ||
-            (window.parent && window.parent.document
-              ? window.parent.document.getElementById("avatarWrap")
-              : null);
-
-          const startTalk = () => {{
-            const avatar = getAvatar();
-            if (avatar) avatar.classList.add("talking");
-          }};
-
-          const stopTalk = () => {{
-            const avatar = getAvatar();
-            if (avatar) avatar.classList.remove("talking");
-          }};
-
-          // Avoid duplicate listeners
-          if (audio.dataset.bound === "1") return;
-          audio.dataset.bound = "1";
-
-          audio.addEventListener("play", startTalk);
-          audio.addEventListener("pause", stopTalk);
-          audio.addEventListener("ended", stopTalk);
-        }})();
-        </script>
-        """,
-        height=70,
-    )
-
-
+if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
+    st.audio(turn["partner_audio"])
 
 if show_translation:
     if st.button("Translate partner reply", key="btn_translate"):
