@@ -7,6 +7,8 @@ import hashlib
 import tempfile
 from secrets import token_hex
 from typing import Any, Dict, List, Optional
+import streamlit.components.v1 as components
+
 
 import streamlit as st
 
@@ -480,7 +482,7 @@ def _audio_to_data_uri(path: str) -> Optional[str]:
         return None
 
 
-def render_scene_panel(scenario: str) -> None:
+def render_scene_panel(scenario: str, partner_audio_path: str = "") -> None:
     bg_path = STAGE_BACKGROUNDS.get(scenario, "")
     av_path = STAGE_AVATARS.get(scenario, "")
 
@@ -491,30 +493,36 @@ def render_scene_panel(scenario: str) -> None:
         st.warning(f"Missing background image: {bg_path}")
         return
 
-    # Avatar wrapper has a stable DOM id so JS can toggle "talking"
+    # Optional: embed partner audio into the same iframe for reliable JS
+    audio_uri = _audio_to_data_uri(partner_audio_path) if partner_audio_path else None
+
     avatar_html = ""
     if av_uri:
         avatar_html = f"""
-        <div id="avatarWrap" style="
-            position:absolute;
-            right:18px;
-            bottom:0px;
-            width:140px;
-        ">
-          <img src="{av_uri}" style="
-              width:140px;
-              height:auto;
-              filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));
-          "/>
+        <div id="avatarWrap" style="position:absolute; right:18px; bottom:0px; width:140px;">
+          <img src="{av_uri}" style="width:140px; height:auto; filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));" />
         </div>
         """
 
-    st.markdown(
+    audio_html = ""
+    if audio_uri:
+        audio_html = f"""
+        <div style="position:absolute; left:12px; right:12px; bottom:12px;">
+          <audio id="partnerAudio" controls style="width:100%;">
+            <source src="{audio_uri}" type="audio/mpeg" />
+          </audio>
+        </div>
+        """
+
+    # Use components.html so:
+    # - HTML never shows up as literal text
+    # - JS definitely runs (st.markdown scripts are unreliable)
+    components.html(
         f"""
         <div style="
             position:relative;
             width:100%;
-            height:220px;
+            height:{260 if audio_uri else 220}px;
             border-radius:18px;
             overflow:hidden;
             margin-bottom:10px;
@@ -522,28 +530,54 @@ def render_scene_panel(scenario: str) -> None:
             background-size:cover;
             background-position:center;
         ">
-            <div style="
-                position:absolute;
-                inset:0;
-                background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);
-            "></div>
+          <style>
+            #avatarWrap.talking img {{
+              animation: talkbob 0.16s infinite alternate ease-in-out;
+              filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45)) brightness(1.06);
+            }}
+            @keyframes talkbob {{
+              from {{ transform: translateY(0px) scale(1.00); }}
+              to   {{ transform: translateY(-2px) scale(1.01); }}
+            }}
+          </style>
 
-            <div style="
-                position:absolute;
-                left:16px;
-                bottom:14px;
-                color:white;
-                font-size:18px;
-                font-weight:600;
-                text-shadow:0px 2px 12px rgba(0,0,0,0.6);
-            ">
-                {scenario}
-            </div>
+          <div style="position:absolute; inset:0;
+               background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);">
+          </div>
 
-            {avatar_html}
+          <div style="
+              position:absolute;
+              left:16px;
+              bottom:{56 if audio_uri else 14}px;
+              color:white;
+              font-size:18px;
+              font-weight:600;
+              text-shadow:0px 2px 12px rgba(0,0,0,0.6);
+              z-index:2;
+          ">
+            {scenario}
+          </div>
+
+          {avatar_html}
+          {audio_html}
+
+          <script>
+            (function() {{
+              const audio = document.getElementById("partnerAudio");
+              const avatar = document.getElementById("avatarWrap");
+              if (!audio || !avatar) return;
+
+              const startTalk = () => avatar.classList.add("talking");
+              const stopTalk  = () => avatar.classList.remove("talking");
+
+              audio.addEventListener("play", startTalk);
+              audio.addEventListener("pause", stopTalk);
+              audio.addEventListener("ended", stopTalk);
+            }})();
+          </script>
         </div>
         """,
-        unsafe_allow_html=True,
+        height=(280 if audio_uri else 240),
     )
 
 
@@ -564,7 +598,7 @@ def nav_bar() -> None:
             st.rerun()
     with c3:
         if st.button("⏹ Review", use_container_width=True):
-    # Treat Review as "closing" the current turn
+            # Treat Review as "closing" the current turn
             archive_active_interaction()
             st.session_state.active_interaction = None
             persist_log_to_disk()
@@ -682,14 +716,16 @@ playback_my_sentence = bool(st.session_state.playback_my_sentence)
 st.title("💬 Conversation")
 nav_bar()
 
-render_scene_panel(scenario)
+turn = st.session_state.get("active_interaction") or {}
+render_scene_panel(scenario, partner_audio_path=turn.get("partner_audio", ""))
+
 
 # If OpenAI isn't configured, still show UI but disable processing
 if CLIENT is None:
     st.info("Add OPENAI_API_KEY in Streamlit Secrets to enable transcription & AI conversation.")
     st.stop()
 
-st.markdown("### 🎙️ Speak")
+# st.markdown("### 🎙️ Speak")
 audio = st.audio_input("Press the mic icon and speak")
 
 def _bytes_from_audio_input(audio_obj: Any) -> Optional[bytes]:
@@ -787,7 +823,7 @@ if audio:
 # ------------------ Interaction Panel ------------------
 turn = st.session_state.get("active_interaction")
 
-st.markdown("### 🧩 Interaction")
+# st.markdown("### 🧩 Interaction")
 if not turn:
     st.info("Record a message to start.")
     st.stop()
