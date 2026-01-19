@@ -513,7 +513,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
+# st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
 
 # Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
 bg_uri = _file_to_data_uri(bg_rel)
@@ -694,7 +694,7 @@ if not st.session_state.messages:
 
 
 # ================== USER INPUT ==================
-audio_value = st.audio_input("Record a voice message")
+audio_value = st.audio_input("Press Mic icon to Start and press again to Stop recording")
 
 transcribed_text = ""
 final_audio_input = ""
