@@ -23,6 +23,22 @@ except Exception:
 # =========================================================
 st.set_page_config(page_title="Language Conversation Tutor", page_icon="🗣️", layout="centered")
 
+#===========For Avatar Animation===========
+
+st.markdown("""
+<style>
+/* Avatar wrapper gets "talking" class toggled by JS */
+#avatarWrap.talking img{
+  animation: talkbob 0.16s infinite alternate ease-in-out;
+  filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45)) brightness(1.06);
+}
+@keyframes talkbob{
+  from { transform: translateY(0px) scale(1.00); }
+  to   { transform: translateY(-2px) scale(1.01); }
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # =========================================================
 # QUERY PARAMS + SID
@@ -64,6 +80,7 @@ def _ensure_sid() -> str:
     # rerun to ensure SID is available everywhere
     st.rerun()
     return sid  # pragma: no cover
+
 
 
 SID = _ensure_sid()
@@ -448,6 +465,20 @@ def _img_to_data_uri(path: str) -> Optional[str]:
     except Exception:
         return None
 
+def _audio_to_data_uri(path: str) -> Optional[str]:
+    """Read an audio file and return a data URI suitable for <audio src=...>."""
+    try:
+        if not path or not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            b = f.read()
+        ext = os.path.splitext(path)[1].lower().replace(".", "")
+        # Most of your TTS output is mp3
+        mime = "audio/mpeg" if ext == "mp3" else "audio/wav"
+        return f"data:{mime};base64,{base64.b64encode(b).decode('utf-8')}"
+    except Exception:
+        return None
+
 
 def render_scene_panel(scenario: str) -> None:
     bg_path = STAGE_BACKGROUNDS.get(scenario, "")
@@ -460,17 +491,22 @@ def render_scene_panel(scenario: str) -> None:
         st.warning(f"Missing background image: {bg_path}")
         return
 
+    # Avatar wrapper has a stable DOM id so JS can toggle "talking"
     avatar_html = ""
     if av_uri:
         avatar_html = f"""
-        <img src="{av_uri}" style="
+        <div id="avatarWrap" style="
             position:absolute;
             right:18px;
             bottom:0px;
             width:140px;
-            height:auto;
-            filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));
-        " />
+        ">
+          <img src="{av_uri}" style="
+              width:140px;
+              height:auto;
+              filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));
+          "/>
+        </div>
         """
 
     st.markdown(
@@ -491,6 +527,7 @@ def render_scene_panel(scenario: str) -> None:
                 inset:0;
                 background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);
             "></div>
+
             <div style="
                 position:absolute;
                 left:16px;
@@ -502,11 +539,13 @@ def render_scene_panel(scenario: str) -> None:
             ">
                 {scenario}
             </div>
+
             {avatar_html}
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 
 # =========================================================
@@ -765,8 +804,40 @@ if turn.get("my_sentence_audio") and os.path.exists(turn["my_sentence_audio"]):
     st.audio(turn["my_sentence_audio"])
 
 st.markdown(f"**Partner:** {turn.get('partner','')}")
-if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
-    st.audio(turn["partner_audio"])
+
+partner_audio_uri = _audio_to_data_uri(turn.get("partner_audio", ""))
+turn_id = (turn.get("turn_id") or str(int(time.time()*1000))).replace('"', '')
+audio_element_id = f"partnerAudio_{turn_id}"
+
+if partner_audio_uri:
+    st.markdown(
+        f"""
+        <audio id="{audio_element_id}" controls style="width:100%;">
+          <source src="{partner_audio_uri}" type="audio/mpeg">
+        </audio>
+
+        <script>
+        (function() {{
+          const audio = document.getElementById("{audio_element_id}");
+          const avatar = document.getElementById("avatarWrap");
+          if (!audio || !avatar) return;
+
+          // Avoid duplicate listeners if Streamlit reruns and keeps DOM around
+          if (audio.dataset.bound === "1") return;
+          audio.dataset.bound = "1";
+
+          const startTalk = () => avatar.classList.add("talking");
+          const stopTalk  = () => avatar.classList.remove("talking");
+
+          audio.addEventListener("play", startTalk);
+          audio.addEventListener("pause", stopTalk);
+          audio.addEventListener("ended", stopTalk);
+        }})();
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 if show_translation:
     if st.button("Translate partner reply", key="btn_translate"):
