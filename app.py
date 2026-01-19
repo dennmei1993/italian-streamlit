@@ -163,6 +163,13 @@ def _clear_query_params() -> None:
 def _persistent_store() -> dict:
     return {}
 
+def persist_log_to_store() -> None:
+    """Persist current conversation_log to process-level STORE by SID."""
+    try:
+        STORE[SID] = list(st.session_state.get("conversation_log", []))
+    except Exception:
+        pass
+
 def _ensure_sid() -> str:
     sid = _get_query_param("sid")
     if sid:
@@ -244,11 +251,15 @@ if "stage" not in st.session_state:
 
 def reset_conversation_state(clear_log: bool = True) -> None:
     """Reset the in-session conversation state. Optionally clear the archived log."""
-    # Ensure log exists
-    if "conversation_log" not in st.session_state:
-        st.session_state.conversation_log = []
+    st.session_state.setdefault("conversation_log", [])
+
     if clear_log:
         st.session_state.conversation_log = []
+        # Also clear persisted store for this sid
+        try:
+            STORE[SID] = []
+        except Exception:
+            pass
 
     st.session_state.messages = []
     st.session_state.turn_count = 0
@@ -258,23 +269,21 @@ def reset_conversation_state(clear_log: bool = True) -> None:
     st.session_state.active_interaction = None
 
 
-
 def archive_active_interaction() -> None:
-    """Append active_interaction to conversation_log exactly once."""
+    """Append active_interaction to conversation_log exactly once, then persist by SID."""
     turn = st.session_state.get("active_interaction")
     if not turn:
         return
 
     st.session_state.setdefault("conversation_log", [])
-
     log = st.session_state.conversation_log
+
+    # Avoid double-append on rerun
     if log and log[-1].get("user") == turn.get("user"):
-        return  # avoid double append on rerun
+        return
 
     log.append(dict(turn))
-
-
-
+    persist_log_to_store()
 
 
 # ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
@@ -709,7 +718,14 @@ if audio_value is not None:
         st.caption("✅ Recording already processed.")
     else:
         # New submission: clear the Interaction panel immediately (history is logged per-turn)
+        # 1) Archive whatever is currently on screen BEFORE clearing it
+        archive_active_interaction()
+
+        persist_log_to_store()
+
+        # 2) Now clear the interaction panel for the new turn
         st.session_state.active_interaction = None
+
         st.session_state.last_audio_hash = audio_hash
         st.session_state.last_user_input = ""  # allow same sentence in new turn if needed
 
