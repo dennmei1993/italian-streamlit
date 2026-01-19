@@ -192,8 +192,6 @@ def _ensure_sid() -> str:
 SID = _ensure_sid()
 STORE = _persistent_store()
 
-        pass
-
 
 # ================== OPTIONAL VOCAB ==================
 vocab = []
