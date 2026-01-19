@@ -650,7 +650,7 @@ if CLIENT is None:
     st.info("Add OPENAI_API_KEY in Streamlit Secrets to enable transcription & AI conversation.")
     st.stop()
 
-st.markdown("### 🎙️ Speak")
+#st.markdown("### 🎙️ Speak")
 audio = st.audio_input("Press the mic icon and speak")
 
 def _bytes_from_audio_input(audio_obj: Any) -> Optional[bytes]:
@@ -748,7 +748,7 @@ if audio:
 # ------------------ Interaction Panel ------------------
 turn = st.session_state.get("active_interaction")
 
-st.markdown("### 🧩 Interaction")
+#st.markdown("### 🧩 Interaction")
 if not turn:
     st.info("Record a message to start.")
     st.stop()
