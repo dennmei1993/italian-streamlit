@@ -806,28 +806,43 @@ if turn.get("my_sentence_audio") and os.path.exists(turn["my_sentence_audio"]):
 st.markdown(f"**Partner:** {turn.get('partner','')}")
 
 partner_audio_uri = _audio_to_data_uri(turn.get("partner_audio", ""))
-turn_id = (turn.get("turn_id") or str(int(time.time()*1000))).replace('"', '')
+turn_id = (turn.get("turn_id") or str(int(time.time() * 1000))).replace('"', "")
 audio_element_id = f"partnerAudio_{turn_id}"
 
 if partner_audio_uri:
-    st.markdown(
+    components.html(
         f"""
-        <audio id="{audio_element_id}" controls style="width:100%;">
-          <source src="{partner_audio_uri}" type="audio/mpeg">
-        </audio>
+        <div>
+          <audio id="{audio_element_id}" controls style="width:100%;">
+            <source src="{partner_audio_uri}" type="audio/mpeg">
+          </audio>
+        </div>
 
         <script>
         (function() {{
           const audio = document.getElementById("{audio_element_id}");
-          const avatar = document.getElementById("avatarWrap");
-          if (!audio || !avatar) return;
+          if (!audio) return;
 
-          // Avoid duplicate listeners if Streamlit reruns and keeps DOM around
+          // Try to find avatar in this iframe first, then in parent document
+          const getAvatar = () =>
+            document.getElementById("avatarWrap") ||
+            (window.parent && window.parent.document
+              ? window.parent.document.getElementById("avatarWrap")
+              : null);
+
+          const startTalk = () => {{
+            const avatar = getAvatar();
+            if (avatar) avatar.classList.add("talking");
+          }};
+
+          const stopTalk = () => {{
+            const avatar = getAvatar();
+            if (avatar) avatar.classList.remove("talking");
+          }};
+
+          // Avoid duplicate listeners
           if (audio.dataset.bound === "1") return;
           audio.dataset.bound = "1";
-
-          const startTalk = () => avatar.classList.add("talking");
-          const stopTalk  = () => avatar.classList.remove("talking");
 
           audio.addEventListener("play", startTalk);
           audio.addEventListener("pause", stopTalk);
@@ -835,8 +850,9 @@ if partner_audio_uri:
         }})();
         </script>
         """,
-        unsafe_allow_html=True
+        height=70,
     )
+
 
 
 if show_translation:
