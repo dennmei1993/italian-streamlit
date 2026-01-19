@@ -525,8 +525,10 @@ def nav_bar() -> None:
             st.rerun()
     with c3:
         if st.button("⏹ Review", use_container_width=True):
-            # Ensure current interaction is archived before leaving
+    # Treat Review as "closing" the current turn
             archive_active_interaction()
+            st.session_state.active_interaction = None
+            persist_log_to_disk()
             st.session_state.page = "review"
             st.rerun()
 
