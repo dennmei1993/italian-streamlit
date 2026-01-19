@@ -10,6 +10,7 @@ import hashlib
 import base64
 import mimetypes
 import streamlit.components.v1 as components
+import secrets
 
 # ================== SETUP ==================
 load_dotenv()
@@ -138,14 +139,60 @@ def _get_query_param(name: str) -> str:
 
 
 def _clear_query_params() -> None:
-    """Compat helper to clear query params after handling an action."""
+    """Compat helper to clear action/nav params after handling an action, preserving sid."""
     try:
+        sid = _get_query_param("sid")
         st.query_params.clear()
+        if sid:
+            st.query_params.update({"sid": sid})
     except Exception:
         try:
-            st.experimental_set_query_params()
+            sid = _get_query_param("sid")
+            if sid:
+                st.experimental_set_query_params(sid=sid)
+            else:
+                st.experimental_set_query_params()
         except Exception:
             pass
+# ================== PERSISTENT LOG (SID) ==================
+# On Streamlit Cloud/mobile, navigating via query params can trigger a full reload
+# and create a fresh session_state. To ensure the Review page can still show the
+# conversation, we persist the log in a process-level store keyed by a stable sid
+# that we keep in the URL.
+@st.cache_resource
+def _persistent_store() -> dict:
+    return {}
+
+def _ensure_sid() -> str:
+    sid = _get_query_param("sid")
+    if sid:
+        return sid
+    sid = secrets.token_hex(8)
+    try:
+        # Preserve any existing action/nav on first set
+        current_action = _get_query_param("action") or _get_query_param("nav")
+        if current_action:
+            st.query_params.update({"sid": sid, "action": current_action})
+        else:
+            st.query_params.update({"sid": sid})
+    except Exception:
+        try:
+            qp = st.experimental_get_query_params()
+            new_qp = {"sid": sid}
+            if "action" in qp and qp["action"]:
+                new_qp["action"] = qp["action"][0]
+            if "nav" in qp and qp["nav"]:
+                new_qp["nav"] = qp["nav"][0]
+            st.experimental_set_query_params(**new_qp)
+        except Exception:
+            pass
+    # Important: rerun so the sid is available to the rest of the script
+    st.rerun()
+
+SID = _ensure_sid()
+STORE = _persistent_store()
+
+        pass
 
 
 # ================== OPTIONAL VOCAB ==================
@@ -215,25 +262,10 @@ def reset_conversation_state(clear_log: bool = True) -> None:
 
 
 def archive_active_interaction() -> None:
-    """Append the current active interaction to conversation_log (once)."""
-    turn = st.session_state.get("active_interaction")
-    if not turn:
-        return
+    return  # already archived at creation time
 
-    st.session_state.setdefault("conversation_log", [])
-    log = st.session_state.conversation_log
 
-    # Avoid double-logging on reruns
-    if log:
-        last = log[-1]
-        if (
-            last.get("user") == turn.get("user")
-            and last.get("partner") == turn.get("partner")
-            and (last.get("tutor_raw") or "") == (turn.get("tutor_raw") or "")
-        ):
-            return
 
-    log.append(dict(turn))
 
 # ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
 # On mobile/Streamlit Cloud, clicking a button that uses query-params can
@@ -318,6 +350,11 @@ if st.session_state.page == "review":
 
     log = st.session_state.get("conversation_log", [])
 
+    # Fallback: load persisted log by SID if session_state was reset
+    if not log and SID in STORE:
+        log = list(STORE.get(SID, []))
+        st.session_state.conversation_log = list(log)
+
     col_a, col_b = st.columns([1, 2])
     with col_a:
         if st.button("⬅ Home", key="review_home"):
@@ -333,6 +370,11 @@ if st.session_state.page == "review":
 
     # log = st.session_state.conversation_log[:]  # copy
     log = st.session_state.get("conversation_log", [])
+
+    # Fallback: load persisted log by SID if session_state was reset
+    if not log and SID in STORE:
+        log = list(STORE.get(SID, []))
+        st.session_state.conversation_log = list(log)
     if not log:
         st.info("No conversation history yet. Start a conversation and press End Conversation.")
         st.stop()
@@ -424,9 +466,9 @@ icon_row_html = """
             color:#fff;text-decoration:none;font-size:22px;line-height:1;}
 </style>
 <div class="iconbar">
-  <a class="iconbtn" href="?action=home" title="Home">🏠</a>
-  <a class="iconbtn" href="?action=new" title="New Conversation">🆕</a>
-  <a class="iconbtn" href="?action=end" title="End Conversation">⏹</a>
+  <a class="iconbtn" href="?sid={SID}&action=home" title="Home">🏠</a>
+  <a class="iconbtn" href="?sid={SID}&action=new" title="New Conversation">🆕</a>
+  <a class="iconbtn" href="?sid={SID}&action=end" title="End Conversation">⏹</a>
 </div>
 """
 
@@ -454,9 +496,9 @@ st.markdown("""
 </style>
 
 <div class="iconbar">
-  <a class="iconbtn" href="?action=home">🏠</a>
-  <a class="iconbtn" href="?action=new">🆕</a>
-  <a class="iconbtn" href="?action=end">⏹</a>
+  <a class="iconbtn" href="?sid={SID}&action=home">🏠</a>
+  <a class="iconbtn" href="?sid={SID}&action=new">🆕</a>
+  <a class="iconbtn" href="?sid={SID}&action=end">⏹</a>
 </div>
 """, unsafe_allow_html=True)
 
@@ -812,9 +854,17 @@ If fully natural: Looks good 👍
         "translation": None,
     }
 
-    # ✅ Critical: log the turn immediately (exactly once) before anything can clear it.
+# Always append to log immediately (guaranteed persistence)
+    st.session_state.conversation_log.append(turn_data)
+
+# Also keep as the active interaction for display
     st.session_state.active_interaction = turn_data
-    archive_active_interaction()
+
+    # Log this completed turn immediately for the Review page
+    if "conversation_log" not in st.session_state:
+        st.session_state.conversation_log = []
+    if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
+        st.session_state.conversation_log.append(dict(st.session_state.active_interaction))
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
 turn = st.session_state.active_interaction
@@ -854,5 +904,4 @@ if turn:
                     st.markdown(f"**Tip:** {tip}")
 else:
     st.info("Record a message to start.")
-
 
