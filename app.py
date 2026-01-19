@@ -260,7 +260,19 @@ def reset_conversation_state(clear_log: bool = True) -> None:
 
 
 def archive_active_interaction() -> None:
-    return  # already archived at creation time
+    """Append active_interaction to conversation_log exactly once."""
+    turn = st.session_state.get("active_interaction")
+    if not turn:
+        return
+
+    st.session_state.setdefault("conversation_log", [])
+
+    log = st.session_state.conversation_log
+    if log and log[-1].get("user") == turn.get("user"):
+        return  # avoid double append on rerun
+
+    log.append(dict(turn))
+
 
 
 
@@ -853,16 +865,11 @@ If fully natural: Looks good 👍
     }
 
 # Always append to log immediately (guaranteed persistence)
-    st.session_state.conversation_log.append(turn_data)
-
-# Also keep as the active interaction for display
     st.session_state.active_interaction = turn_data
 
-    # Log this completed turn immediately for the Review page
-    if "conversation_log" not in st.session_state:
-        st.session_state.conversation_log = []
-    if not st.session_state.conversation_log or st.session_state.conversation_log[-1].get("user") != user_input:
-        st.session_state.conversation_log.append(dict(st.session_state.active_interaction))
+    # Save for Review page (exactly once)
+    archive_active_interaction()
+
 
 # ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
 turn = st.session_state.active_interaction
