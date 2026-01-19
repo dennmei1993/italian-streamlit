@@ -1,276 +1,186 @@
-import streamlit as st
-from openai import OpenAI
-from dotenv import load_dotenv
-import json
-import tempfile
 import os
 import re
-import io
-import hashlib
+import json
+import time
 import base64
-import mimetypes
-import streamlit.components.v1 as components
-import secrets
+import hashlib
+import tempfile
+from secrets import token_hex
+from typing import Any, Dict, List, Optional
 
-# ================== SETUP ==================
-load_dotenv()
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else OpenAI()
+import streamlit as st
 
-# ================== HELPERS ==================
-
-def speak_italian(text: str) -> str:
-    """TTS helper. Returns a temp mp3 path."""
-    if not text or not text.strip():
-        return ""
-
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    tmp.close()
-    audio_path = tmp.name
-
-    speech = client.audio.speech.create(
-        model="gpt-4o-mini-tts",
-        voice="alloy",
-        input=text.strip(),
-    )
-
-    with open(audio_path, "wb") as f:
-        f.write(speech.read())
-
-    return audio_path
+# Optional OpenAI dependency (your original app uses it).
+# Keep this import; Streamlit Cloud will work if openai is in requirements.txt.
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None  # type: ignore
 
 
-def looks_non_italian_or_garbled(text: str) -> bool:
-    """Heuristic: triggers repair when transcript seems off."""
-    if not text:
-        return True
-    t = text.strip().lower()
-
-    if len(t) <= 1:
-        return True
-
-    english_markers = {
-        "i", "you", "we", "they", "want", "need", "with", "and", "the", "a",
-        "to", "for", "is", "are", "please",
-    }
-    tokens = re.findall(r"[a-z']+", t)
-    if tokens and sum(tok in english_markers for tok in tokens) >= 2:
-        return True
-
-    if sum(ch.isalpha() for ch in t) < 3:
-        return True
-
-    return False
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+st.set_page_config(page_title="Language Conversation Tutor", page_icon="🗣️", layout="centered")
 
 
-def contains_english(text: str) -> bool:
-    """Very simple English detection (baseline)."""
-    common_english = ["yes", "no", "hi", "hello", "thanks", "thank"]
-    text_lower = (text or "").lower()
-    return any(word in text_lower.split() for word in common_english)
-
-
-def parse_tutor_output(t: str) -> dict:
-    """Parse tutor output.
-
-    Expected formats:
-      - Recommended: <Italian>
-      - Tip: <English>
-    Or:
-      Looks good 👍
-    """
-    out = {"recommended": "", "tip": "", "raw": (t or "").strip()}
-    raw = out["raw"]
-    if not raw:
-        return out
-    if raw.lower().startswith("looks good"):
-        return out
-
-    rec = re.search(r"(?:^|\n)\s*[-•]?\s*Recommended\s*:\s*(.+)", raw, flags=re.IGNORECASE)
-    tip = re.search(r"(?:^|\n)\s*[-•]?\s*Tip\s*:\s*(.+)", raw, flags=re.IGNORECASE)
-
-    if rec:
-        out["recommended"] = rec.group(1).strip()
-    if tip:
-        out["tip"] = tip.group(1).strip()
-    return out
-
-
-def _abs_asset_path(rel_path: str) -> str:
-    """Resolve repo-relative asset paths reliably on Streamlit Cloud."""
-    if not rel_path:
-        return ""
-    if os.path.isabs(rel_path):
-        return rel_path
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, rel_path)
-
-
-def _file_to_data_uri(rel_path: str) -> str:
-    """Return a data: URI for an image file, or empty string if missing."""
-    abs_path = _abs_asset_path(rel_path)
-    if not abs_path or (not os.path.exists(abs_path)):
-        return ""
-    mime, _ = mimetypes.guess_type(abs_path)
-    if not mime:
-        mime = "image/png"
+# =========================================================
+# QUERY PARAMS + SID
+# =========================================================
+def _get_query_param(key: str) -> Optional[str]:
     try:
-        with open(abs_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("ascii")
-        return f"data:{mime};base64,{b64}"
+        # New API
+        val = st.query_params.get(key)
+        if isinstance(val, list):
+            return val[0] if val else None
+        return str(val) if val is not None else None
     except Exception:
-        return ""
-
-
-def _get_query_param(name: str) -> str:
-    """Compat helper for reading query params across Streamlit versions."""
-    try:
-        v = st.query_params.get(name)
-        if isinstance(v, list):
-            return v[0] if v else ""
-        return v or ""
-    except Exception:
+        # Legacy API
         try:
             qp = st.experimental_get_query_params()
-            v = qp.get(name, [""])
-            return v[0] if v else ""
-        except Exception:
-            return ""
-
-
-def _clear_query_params() -> None:
-    """Compat helper to clear action/nav params after handling an action, preserving sid."""
-    try:
-        sid = _get_query_param("sid")
-        st.query_params.clear()
-        if sid:
-            st.query_params.update({"sid": sid})
-    except Exception:
-        try:
-            sid = _get_query_param("sid")
-            if sid:
-                st.experimental_set_query_params(sid=sid)
-            else:
-                st.experimental_set_query_params()
+            if key in qp and qp[key]:
+                return qp[key][0]
         except Exception:
             pass
-# ================== PERSISTENT LOG (SID) ==================
-# On Streamlit Cloud/mobile, navigating via query params can trigger a full reload
-# and create a fresh session_state. To ensure the Review page can still show the
-# conversation, we persist the log in a process-level store keyed by a stable sid
-# that we keep in the URL.
-@st.cache_resource
-def _persistent_store() -> dict:
-    return {}
+    return None
 
-def persist_log_to_store() -> None:
-    """Persist current conversation_log to process-level STORE by SID."""
+
+def _set_query_params(**kwargs: str) -> None:
     try:
-        STORE[SID] = list(st.session_state.get("conversation_log", []))
+        st.query_params.update(kwargs)
     except Exception:
-        pass
+        try:
+            st.experimental_set_query_params(**kwargs)
+        except Exception:
+            pass
+
 
 def _ensure_sid() -> str:
     sid = _get_query_param("sid")
     if sid:
         return sid
-    sid = secrets.token_hex(8)
-    try:
-        # Preserve any existing action/nav on first set
-        current_action = _get_query_param("action") or _get_query_param("nav")
-        if current_action:
-            st.query_params.update({"sid": sid, "action": current_action})
-        else:
-            st.query_params.update({"sid": sid})
-    except Exception:
-        try:
-            qp = st.experimental_get_query_params()
-            new_qp = {"sid": sid}
-            if "action" in qp and qp["action"]:
-                new_qp["action"] = qp["action"][0]
-            if "nav" in qp and qp["nav"]:
-                new_qp["nav"] = qp["nav"][0]
-            st.experimental_set_query_params(**new_qp)
-        except Exception:
-            pass
-    # Important: rerun so the sid is available to the rest of the script
+    sid = token_hex(8)
+    _set_query_params(sid=sid)
+    # rerun to ensure SID is available everywhere
     st.rerun()
+    return sid  # pragma: no cover
+
 
 SID = _ensure_sid()
-STORE = _persistent_store()
 
 
-# ================== OPTIONAL VOCAB ==================
-vocab = []
+# =========================================================
+# DURABLE LOG PERSISTENCE (disk JSON keyed by SID)
+# =========================================================
+def _log_file_path(sid: str) -> str:
+    # Streamlit Cloud allows writing to /tmp in the running container session
+    return os.path.join(tempfile.gettempdir(), f"conversation_log_{sid}.json")
+
+
+def persist_log_to_disk() -> None:
+    """Persist session_state.conversation_log to disk."""
+    try:
+        path = _log_file_path(SID)
+        log = st.session_state.get("conversation_log", [])
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(log, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def load_log_from_disk() -> List[Dict[str, Any]]:
+    """Load conversation log for SID from disk."""
+    try:
+        path = _log_file_path(SID)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+    return []
+
+
+def clear_log_on_disk() -> None:
+    try:
+        path = _log_file_path(SID)
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+# =========================================================
+# OPTIONAL VOCAB (used as hint for repair prompt)
+# =========================================================
+vocab: List[str] = []
 try:
     with open("vocab.json", encoding="utf-8") as f:
-        vocab = json.load(f).get("words", [])
+        vocab = (json.load(f) or {}).get("words", []) or []
 except Exception:
     vocab = []
 
 
-# ================== SESSION STATE ==================
-if "page" not in st.session_state:
-    st.session_state.page = "home"  # home | conversation | review
+# =========================================================
+# SESSION STATE DEFAULTS
+# =========================================================
+def _init_state() -> None:
+    st.session_state.setdefault("page", "home")  # home | conversation | review
+    st.session_state.setdefault("scenario", "Ordering coffee / food")
+    st.session_state.setdefault("show_tutor", True)
+    st.session_state.setdefault("show_translation", True)
+    st.session_state.setdefault("playback_my_sentence", True)
 
-if "scenario" not in st.session_state:
-    st.session_state.scenario = "☕ Ordering coffee / food"
+    # Chat messages for partner role (keeps context for LLM)
+    st.session_state.setdefault("messages", [])
 
-if "show_tutor" not in st.session_state:
-    st.session_state.show_tutor = True
+    # One "active interaction" shown on conversation page (cleared each new turn)
+    st.session_state.setdefault("active_interaction", None)
 
-if "show_translation" not in st.session_state:
-    st.session_state.show_translation = True
-
-if "playback_my_sentence" not in st.session_state:
-    st.session_state.playback_my_sentence = True
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# The current interaction displayed in the Interaction panel (cleared on next submit)
-if "active_interaction" not in st.session_state:
-    st.session_state.active_interaction = None
-
-# Archived conversation history for Review page
-if "conversation_log" not in st.session_state:
-    st.session_state.conversation_log = []
-
-if "turn_count" not in st.session_state:
-    st.session_state.turn_count = 0
-
-if "last_user_input" not in st.session_state:
-    st.session_state.last_user_input = ""
-
-if "last_audio_hash" not in st.session_state:
-    st.session_state.last_audio_hash = None
-
-if "stage" not in st.session_state:
-    st.session_state.stage = "ORDERING"
-
-
-def reset_conversation_state(clear_log: bool = True) -> None:
-    """Reset the in-session conversation state. Optionally clear the archived log."""
+    # Archived turns for Review
     st.session_state.setdefault("conversation_log", [])
+
+    # Turn tracking
+    st.session_state.setdefault("turn_count", 0)
+    st.session_state.setdefault("last_user_input", "")
+    st.session_state.setdefault("last_audio_hash", None)
+
+
+_init_state()
+
+
+# Hydrate log from disk if empty (critical for Review reliability)
+if not st.session_state.conversation_log:
+    disk_log = load_log_from_disk()
+    if disk_log:
+        st.session_state.conversation_log = list(disk_log)
+
+
+# =========================================================
+# RESET + ARCHIVE HELPERS
+# =========================================================
+def reset_conversation_state(clear_log: bool = True) -> None:
+    """Reset the conversation. If clear_log, clear both memory and disk log."""
+    st.session_state.messages = []
+    st.session_state.turn_count = 0
+    st.session_state.last_user_input = ""
+    st.session_state.last_audio_hash = None
+    st.session_state.active_interaction = None
 
     if clear_log:
         st.session_state.conversation_log = []
-        # Also clear persisted store for this sid
-        try:
-            STORE[SID] = []
-        except Exception:
-            pass
-
-    st.session_state.messages = []
-    st.session_state.turn_count = 0
-    st.session_state.last_user_input = ""
-    st.session_state.last_audio_hash = None
-    st.session_state.stage = "ORDERING"
-    st.session_state.active_interaction = None
+        clear_log_on_disk()
+    else:
+        # keep log
+        persist_log_to_disk()
 
 
 def archive_active_interaction() -> None:
-    """Append active_interaction to conversation_log exactly once, then persist by SID."""
+    """
+    Append current active_interaction to conversation_log exactly once,
+    then persist to disk. This is the core of the Review fix.
+    """
     turn = st.session_state.get("active_interaction")
     if not turn:
         return
@@ -278,81 +188,375 @@ def archive_active_interaction() -> None:
     st.session_state.setdefault("conversation_log", [])
     log = st.session_state.conversation_log
 
-    # Avoid double-append on rerun
-    if log and log[-1].get("user") == turn.get("user"):
+    # prevent double-append on reruns
+    if log and log[-1].get("turn_id") == turn.get("turn_id"):
+        return
+    if log and log[-1].get("user") == turn.get("user") and log[-1].get("partner") == turn.get("partner"):
+        # additional safety
         return
 
     log.append(dict(turn))
-    persist_log_to_store()
+    persist_log_to_disk()
 
 
-# ================== NAV ACTIONS (HANDLE BEFORE RENDERING) ==================
-# On mobile/Streamlit Cloud, clicking a button that uses query-params can
-# trigger a full page reload which may reset session_state back to HOME.
-# If we only process actions *inside* the Conversation page, the app may
-# render Home first and never reach the handler.
-#
-# We support both `?action=...` (used by our icon buttons) and `?nav=...`
-# (legacy).
-nav_action = _get_query_param("action") or _get_query_param("nav")
-if nav_action:
-    nav_action = str(nav_action).lower().strip()
+# =========================================================
+# OPENAI CLIENT + MODEL SETTINGS
+# =========================================================
+def _get_openai_client() -> Optional[Any]:
+    if OpenAI is None:
+        return None
+    # Works with Streamlit secrets:
+    # st.secrets["OPENAI_API_KEY"] = "..."
+    api_key = None
+    try:
+        api_key = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        api_key = None
+    if not api_key:
+        return None
+    try:
+        return OpenAI(api_key=api_key)
+    except Exception:
+        return None
 
-    if nav_action == "home":
-        st.session_state.page = "home"
-        _clear_query_params()
-        st.rerun()
 
-    if nav_action == "new":
-        # Start a fresh conversation
-        if "reset_conversation_state" in globals():
+CLIENT = _get_openai_client()
+
+CHAT_MODEL = "gpt-4o-mini"  # reasonable default
+WHISPER_MODEL = "whisper-1"
+TTS_MODEL = "gpt-4o-mini-tts"
+TTS_VOICE = "alloy"
+
+
+# =========================================================
+# TEXT HELPERS
+# =========================================================
+def looks_like_english(text: str) -> bool:
+    if not text:
+        return False
+    # Heuristic: common English words / contractions
+    english_markers = [" the ", " and ", " i ", " you ", " to ", " don't", "can't", " please "]
+    t = " " + text.lower().strip() + " "
+    return any(m in t for m in english_markers)
+
+
+def looks_garbled(text: str) -> bool:
+    if not text:
+        return True
+    t = text.strip()
+    # too short or too many non-letters
+    letters = sum(ch.isalpha() for ch in t)
+    ratio = letters / max(1, len(t))
+    if len(t) < 2:
+        return True
+    if ratio < 0.45:
+        return True
+    return False
+
+
+def make_turn_id(audio_bytes: bytes) -> str:
+    return hashlib.sha256(audio_bytes).hexdigest()[:16]
+
+
+# =========================================================
+# OPENAI CALLS
+# =========================================================
+def transcribe_audio(audio_bytes: bytes) -> str:
+    if CLIENT is None:
+        return ""
+    try:
+        # Whisper expects a file-like object; write temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            f.write(audio_bytes)
+            tmp_path = f.name
+
+        with open(tmp_path, "rb") as f:
+            result = CLIENT.audio.transcriptions.create(
+                model=WHISPER_MODEL,
+                file=f,
+                prompt="Trascrivi in italiano. Se senti un accento da studente, prova comunque a rendere il testo in italiano naturale.",
+            )
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+        return (getattr(result, "text", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def repair_transcript_to_italian(text: str) -> str:
+    """
+    If transcript seems garbled or English-heavy, we repair it into a plausible Italian sentence.
+    """
+    if CLIENT is None:
+        return text
+
+    hint = ""
+    if vocab:
+        hint = f"\nVocabolario utile (solo come suggerimento): {', '.join(vocab[:40])}\n"
+
+    prompt = (
+        "You are helping a language learner. You will receive a rough transcript of what they said.\n"
+        "If it's already good Italian, return it unchanged.\n"
+        "If it's English or garbled, rewrite as a plausible Italian sentence that matches the intent.\n"
+        "Return ONLY the Italian sentence.\n"
+        f"{hint}\n"
+        f"Transcript:\n{text}\n"
+    )
+
+    try:
+        resp = CLIENT.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        out = (resp.choices[0].message.content or "").strip()
+        # Keep it one line
+        out = re.sub(r"\s+", " ", out).strip()
+        return out or text
+    except Exception:
+        return text
+
+
+def partner_reply_it(messages: List[Dict[str, str]], scenario: str) -> str:
+    if CLIENT is None:
+        return ""
+
+    system = (
+        "You are a friendly conversation partner for a language learner.\n"
+        "Rules:\n"
+        "- Speak ONLY in Italian.\n"
+        "- Do NOT correct the user.\n"
+        "- Do NOT translate.\n"
+        "- Keep replies natural, short-to-medium length.\n"
+        "- Stay in the scenario.\n"
+    )
+
+    scenario_hint = f"Scenario: {scenario}. Keep the conversation consistent with this setting."
+    full = [{"role": "system", "content": system}, {"role": "system", "content": scenario_hint}] + messages
+
+    try:
+        resp = CLIENT.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=full,
+            temperature=0.7,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
+def tutor_tip_en(user_text: str, partner_text: str) -> Dict[str, str]:
+    """
+    Returns {"raw": ..., "recommended": ..., "tip": ...}
+    raw may be "Looks good 👍" or structured.
+    """
+    if CLIENT is None:
+        return {"raw": "", "recommended": "", "tip": ""}
+
+    prompt = (
+        "You are an English tutor helping a learner of Italian.\n"
+        "Given the user's Italian (or English) message and the partner's Italian reply:\n"
+        "- If the user's sentence is already good Italian, respond exactly: Looks good 👍\n"
+        "- Otherwise, output TWO lines:\n"
+        "Recommended: <better Italian sentence>\n"
+        "Tip: <short English explanation>\n\n"
+        f"User:\n{user_text}\n\nPartner:\n{partner_text}\n"
+    )
+
+    try:
+        resp = CLIENT.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+
+        if raw.lower().startswith("looks good"):
+            return {"raw": raw, "recommended": "", "tip": ""}
+
+        rec = ""
+        tip = ""
+        for line in raw.splitlines():
+            if line.lower().startswith("recommended:"):
+                rec = line.split(":", 1)[1].strip()
+            if line.lower().startswith("tip:"):
+                tip = line.split(":", 1)[1].strip()
+
+        return {"raw": raw, "recommended": rec, "tip": tip}
+    except Exception:
+        return {"raw": "", "recommended": "", "tip": ""}
+
+
+def translate_to_english(it_text: str) -> str:
+    if CLIENT is None:
+        return ""
+    prompt = "Translate the following Italian into natural English. Return only the English:\n\n" + it_text
+    try:
+        resp = CLIENT.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
+
+
+def tts_to_file(text: str, suffix: str = "tts") -> Optional[str]:
+    if CLIENT is None or not text:
+        return None
+    try:
+        out_path = os.path.join(tempfile.gettempdir(), f"{suffix}_{SID}_{int(time.time()*1000)}.mp3")
+        audio = CLIENT.audio.speech.create(
+            model=TTS_MODEL,
+            voice=TTS_VOICE,
+            input=text,
+        )
+        with open(out_path, "wb") as f:
+            f.write(audio.read())
+        return out_path
+    except Exception:
+        return None
+
+
+# =========================================================
+# SCENARIO ASSETS (same structure as your current app)
+# =========================================================
+STAGE_BACKGROUNDS = {
+    "Ordering coffee / food": "assets/backgrounds/cafe.jpg",
+    "Buying tickets / transport": "assets/backgrounds/transport.jpg",
+    "Asking directions": "assets/backgrounds/directions.jpg",
+}
+STAGE_AVATARS = {
+    "Ordering coffee / food": "assets/avatars/barista.png",
+    "Buying tickets / transport": "assets/avatars/ticket_clerk.png",
+    "Asking directions": "assets/avatars/local_person.png",
+}
+
+
+def _img_to_data_uri(path: str) -> Optional[str]:
+    try:
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            b = f.read()
+        ext = os.path.splitext(path)[1].lower().replace(".", "")
+        mime = "image/png" if ext == "png" else "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(b).decode('utf-8')}"
+    except Exception:
+        return None
+
+
+def render_scene_panel(scenario: str) -> None:
+    bg_path = STAGE_BACKGROUNDS.get(scenario, "")
+    av_path = STAGE_AVATARS.get(scenario, "")
+
+    bg_uri = _img_to_data_uri(bg_path) if bg_path else None
+    av_uri = _img_to_data_uri(av_path) if av_path else None
+
+    if not bg_uri:
+        st.warning(f"Missing background image: {bg_path}")
+        return
+
+    avatar_html = ""
+    if av_uri:
+        avatar_html = f"""
+        <img src="{av_uri}" style="
+            position:absolute;
+            right:18px;
+            bottom:0px;
+            width:140px;
+            height:auto;
+            filter: drop-shadow(0px 8px 16px rgba(0,0,0,0.45));
+        " />
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            position:relative;
+            width:100%;
+            height:220px;
+            border-radius:18px;
+            overflow:hidden;
+            margin-bottom:10px;
+            background-image:url('{bg_uri}');
+            background-size:cover;
+            background-position:center;
+        ">
+            <div style="
+                position:absolute;
+                inset:0;
+                background: linear-gradient(180deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.55) 100%);
+            "></div>
+            <div style="
+                position:absolute;
+                left:16px;
+                bottom:14px;
+                color:white;
+                font-size:18px;
+                font-weight:600;
+                text-shadow:0px 2px 12px rgba(0,0,0,0.6);
+            ">
+                {scenario}
+            </div>
+            {avatar_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# =========================================================
+# NAV BAR (Streamlit buttons, reliable)
+# =========================================================
+def nav_bar() -> None:
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("🏠 Home", use_container_width=True):
+            st.session_state.page = "home"
+            st.rerun()
+    with c2:
+        if st.button("🆕 New", use_container_width=True):
             reset_conversation_state(clear_log=True)
-        st.session_state.page = "conversation"
-        _clear_query_params()
-        st.rerun()
-
-    if nav_action == "end":
-        if st.session_state.get("active_interaction"):
+            st.session_state.page = "conversation"
+            st.rerun()
+    with c3:
+        if st.button("⏹ Review", use_container_width=True):
+            # Ensure current interaction is archived before leaving
             archive_active_interaction()
-        st.session_state.page = "review"
-        _clear_query_params()
-        st.rerun()
+            st.session_state.page = "review"
+            st.rerun()
 
 
-
-# ================== HOME PAGE ==================
+# =========================================================
+# HOME PAGE
+# =========================================================
 if st.session_state.page == "home":
     st.title("🗣️ Language Conversation Tutor")
-    st.caption("Select a scenario and settings, then start the conversation.")
+    st.caption("Choose a scenario and settings, then start.")
 
     st.session_state.scenario = st.selectbox(
         "Choose a scenario",
-        [
-            "Ordering coffee / food",
-            "Buying tickets / transport",
-            "Asking directions",
-        ],
-        index=[
-            "Ordering coffee / food",
-            "Buying tickets / transport",
-            "Asking directions",
-        ].index(st.session_state.scenario)
-        if st.session_state.scenario in [
-            "Ordering coffee / food",
-            "Buying tickets / transport",
-            "Asking directions",
-        ]
+        ["Ordering coffee / food", "Buying tickets / transport", "Asking directions"],
+        index=["Ordering coffee / food", "Buying tickets / transport", "Asking directions"].index(st.session_state.scenario)
+        if st.session_state.scenario in ["Ordering coffee / food", "Buying tickets / transport", "Asking directions"]
         else 0,
     )
 
-    st.session_state.show_tutor = st.toggle("Show tutor tips", value=st.session_state.show_tutor)
-    st.session_state.show_translation = st.toggle("Enable translation", value=st.session_state.show_translation)
+    st.session_state.show_tutor = st.toggle("Show tutor tips", value=bool(st.session_state.show_tutor))
+    st.session_state.show_translation = st.toggle("Enable translation", value=bool(st.session_state.show_translation))
     st.session_state.playback_my_sentence = st.toggle(
-        "Play back my sentence (TTS)", value=st.session_state.playback_my_sentence
+        "Play back my sentence (TTS)",
+        value=bool(st.session_state.playback_my_sentence),
     )
 
-    if st.button("▶ Start"):
-        # Start a fresh conversation (also clears any prior log to avoid confusion).
+    if CLIENT is None:
+        st.warning("OpenAI API key not found. Add OPENAI_API_KEY to Streamlit Secrets to enable AI features.")
+
+    if st.button("▶ Start", use_container_width=True):
         reset_conversation_state(clear_log=True)
         st.session_state.page = "conversation"
         st.rerun()
@@ -360,53 +564,50 @@ if st.session_state.page == "home":
     st.stop()
 
 
-# ================== REVIEW PAGE (End Conversation) ==================
+# =========================================================
+# REVIEW PAGE
+# =========================================================
 if st.session_state.page == "review":
-    # Safety: ensure the last on-screen turn is included in the log
-    archive_active_interaction()
     st.title("📜 Conversation Review")
-    st.caption("Here is your full conversation history from the last session.")
+    st.caption("Your full conversation history for this session.")
 
-    log = st.session_state.get("conversation_log", [])
+    # Always attempt to archive current on-screen interaction first
+    archive_active_interaction()
 
-    # Fallback: load persisted log by SID if session_state was reset
-    if not log and SID in STORE:
-        log = list(STORE.get(SID, []))
-        st.session_state.conversation_log = list(log)
-
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        if st.button("⬅ Home", key="review_home"):
-            st.session_state.page = "home"
-            st.rerun()
-    with col_b:
-        if st.button("🆕 New Conversation", key="review_new"):
-            reset_conversation_state(clear_log=True)
-            st.session_state.page = "conversation"
-            st.rerun()
-
+    nav_bar()
     st.divider()
 
-    # log = st.session_state.conversation_log[:]  # copy
-    log = st.session_state.get("conversation_log", [])
-
-    # Fallback: load persisted log by SID if session_state was reset
-    if not log and SID in STORE:
-        log = list(STORE.get(SID, []))
-        st.session_state.conversation_log = list(log)
+    # Robust load:
+    log = st.session_state.get("conversation_log", []) or []
     if not log:
-        st.info("No conversation history yet. Start a conversation and press End Conversation.")
+        disk_log = load_log_from_disk()
+        if disk_log:
+            st.session_state.conversation_log = list(disk_log)
+            log = st.session_state.conversation_log
+
+    if not log:
+        st.info("No conversation history yet. Record a message in Conversation, then come back here.")
         st.stop()
 
     for i, turn in enumerate(log, start=1):
         st.markdown(f"### Turn {i}")
-        st.markdown(f"**You:** {turn.get('user','')}")
-        if turn.get("user_audio") and os.path.exists(turn["user_audio"]):
-            st.audio(turn["user_audio"])
 
-        st.markdown(f"**Partner:** {turn.get('partner','')}")
-        if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
-            st.audio(turn["partner_audio"])
+        user_text = (turn.get("user") or "").strip()
+        partner_text = (turn.get("partner") or "").strip()
+
+        st.markdown(f"**You:** {user_text}")
+        user_audio = turn.get("user_audio")
+        if user_audio and os.path.exists(user_audio):
+            st.audio(user_audio)
+
+        st.markdown(f"**Partner:** {partner_text}")
+        partner_audio = turn.get("partner_audio")
+        if partner_audio and os.path.exists(partner_audio):
+            st.audio(partner_audio)
+
+        trans = (turn.get("translation") or "").strip()
+        if trans:
+            st.markdown(f"**Translation:** {trans}")
 
         tutor_raw = (turn.get("tutor_raw") or "").strip()
         if tutor_raw:
@@ -418,8 +619,9 @@ if st.session_state.page == "review":
                 tip = (turn.get("tutor_tip") or "").strip()
                 if rec:
                     st.markdown(f"**Recommended:** {rec}")
-                    if turn.get("tutor_recommended_audio") and os.path.exists(turn["tutor_recommended_audio"]):
-                        st.audio(turn["tutor_recommended_audio"])
+                    rec_audio = turn.get("tutor_recommended_audio")
+                    if rec_audio and os.path.exists(rec_audio):
+                        st.audio(rec_audio)
                 if tip:
                     st.markdown(f"**Tip:** {tip}")
 
@@ -428,501 +630,169 @@ if st.session_state.page == "review":
     st.stop()
 
 
-# ================== CONVERSATION PAGE ==================
+# =========================================================
+# CONVERSATION PAGE
+# =========================================================
 scenario = st.session_state.scenario
 show_tutor = bool(st.session_state.show_tutor)
 show_translation = bool(st.session_state.show_translation)
 playback_my_sentence = bool(st.session_state.playback_my_sentence)
 
-st.session_state.setdefault("conversation_log", [])
+st.title("💬 Conversation")
+nav_bar()
 
+render_scene_panel(scenario)
 
-# ------------------ Scenario Assets ------------------
-# Repo structure (as per your GitHub screenshots):
-#   assets/backgrounds/{cafe,directions,transport}.jpg
-#   assets/avatars/{barista,local_person,ticket_clerk}.png
-STAGE_BACKGROUNDS = {
-    "Ordering coffee / food": ["assets/backgrounds/cafe.jpg"],
-    "Buying tickets / transport": ["assets/backgrounds/transport.jpg"],
-    "Asking directions": ["assets/backgrounds/directions.jpg"],
-}
-STAGE_AVATARS = {
-    "Ordering coffee / food": ["assets/avatars/barista.png"],
-    "Buying tickets / transport": ["assets/avatars/ticket_clerk.png"],
-    "Asking directions": ["assets/avatars/local_person.png"],
-}
+# If OpenAI isn't configured, still show UI but disable processing
+if CLIENT is None:
+    st.info("Add OPENAI_API_KEY in Streamlit Secrets to enable transcription & AI conversation.")
+    st.stop()
 
+st.markdown("### 🎙️ Speak")
+audio = st.audio_input("Press the mic icon and speak")
 
-def _normalize_scenario_label(label: str) -> str:
-    """Normalize scenario labels so emoji/no-emoji variants still match asset dict keys."""
-    if not label:
-        return ""
-    # Remove leading emoji + spaces, e.g. "☕ Ordering coffee / food" -> "Ordering coffee / food"
-    return re.sub(r"^[^A-Za-z]*", "", label).strip()
-
-
-def _get_stage_asset(stage_map: dict, scenario_label: str) -> str:
-    key = _normalize_scenario_label(scenario_label)
-    candidates = stage_map.get(key) or []
-    return candidates[0] if candidates else ""
-
-
-# ------------------ Scenario Panel ------------------
-# We render the scene (background + avatar overlay + icon bar) as ONE HTML block,
-# so the overlay works reliably on mobile.
-
-bg_rel = _get_stage_asset(STAGE_BACKGROUNDS, scenario)
-av_rel = _get_stage_asset(STAGE_AVATARS, scenario)
-bg_abs = _abs_asset_path(bg_rel)
-av_abs = _abs_asset_path(av_rel)
-
-# Use a tiny HTML block ONLY for the icon row. (Native st.columns() will stack on phones.)
-icon_row_html = """
-<style>
-  .iconbar {display:flex;gap:12px;justify-content:space-between;margin:0 0 10px 0;}
-  .iconbtn {flex:1;text-align:center;padding:10px 0;border-radius:12px;
-            border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);
-            color:#fff;text-decoration:none;font-size:22px;line-height:1;}
-</style>
-<div class="iconbar">
-  <a class="iconbtn" href="?sid={SID}&action=home" title="Home">🏠</a>
-  <a class="iconbtn" href="?sid={SID}&action=new" title="New Conversation">🆕</a>
-  <a class="iconbtn" href="?sid={SID}&action=end" title="End Conversation">⏹</a>
-</div>
-"""
-
-st.markdown("""
-<style>
-.iconbar {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin: 0 0 10px 0;
-}
-.iconbtn {
-  width: 56px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color: white;
-  text-decoration: none;
-  font-size: 22px;
-}
-</style>
-
-<div class="iconbar">
-  <a class="iconbtn" href="?sid={SID}&action=home">🏠</a>
-  <a class="iconbtn" href="?sid={SID}&action=new">🆕</a>
-  <a class="iconbtn" href="?sid={SID}&action=end">⏹</a>
-</div>
-""", unsafe_allow_html=True)
-
-
-# st.caption(f"Scenario: {_normalize_scenario_label(scenario)}")
-
-# Render the scene (background + avatar overlay) in one HTML block so the avatar sits ON TOP.
-bg_uri = _file_to_data_uri(bg_rel)
-av_uri = _file_to_data_uri(av_rel)
-
-if not bg_uri:
-    st.warning(f"Scenario background not found: {bg_rel}")
-if av_rel and (not av_uri):
-    st.warning(f"Scenario avatar not found: {av_rel}")
-
-scene_html = f"""
-<style>
-  .scene-wrap {{
-    position: relative;
-    width: 100%;
-    height: 340px;
-    border-radius: 16px;
-    overflow: hidden;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.10);
-  }}
-  .scene-bg {{
-    position: absolute;
-    inset: 0;
-    background-image: url('{bg_uri}');
-    background-size: cover;
-    background-position: center;
-    filter: none;
-  }}
-  .scene-dim {{
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.10), rgba(0,0,0,0.45));
-  }}
-  .scene-avatar {{
-    position: absolute;
-    right: 12px;
-    bottom: 10px;
-    width: 160px;
-    max-width: 45%;
-    height: auto;
-    filter: drop-shadow(0 10px 18px rgba(0,0,0,0.45));
-  }}
-  .scene-missing {{
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255,255,255,0.75);
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    font-size: 14px;
-    padding: 16px;
-    text-align: center;
-  }}
-</style>
-
-<div class="scene-wrap">
-  {'<div class="scene-bg"></div><div class="scene-dim"></div>' if bg_uri else '<div class="scene-missing">(Missing scenario background)</div>'}
-  {'<img class="scene-avatar" src="' + av_uri + '" alt="avatar" />' if av_uri else ''}
-</div>
-"""
-
-# Height is fixed for iframe sizing; adjust if you want taller/shorter scene.
-components.html(scene_html, height=360, scrolling=False)
-
-
-# ------------------ Interaction Section ------------------
-# ================== SCENARIO STATE MACHINE ==================
-def update_stage(user_text: str) -> str:
-    text = user_text.strip().lower()
-    current = st.session_state.stage
-
-    payment_cues = [
-        "ecco", "tenga", "tieni", "prego",
-        "eccoti", "eccolo", "eccola",
-        "pago", "posso pagare",
-        "in contanti", "contanti",
-        "con la carta", "carta", "bancomat", "apple pay",
-    ]
-
-    if current == "PRICE_GIVEN" and any(cue in text for cue in payment_cues):
-        return "PAYMENT"
-
-    if current == "PRICE_GIVEN" and text in ["ok", "va bene", "bene", "sì", "si"]:
-        return "PAYMENT"
-
-    if any(x in text for x in ["quanto", "how much"]):
-        return "PRICE_GIVEN"
-
-    if text in ["si", "sì", "ok", "va bene"]:
-        return "PAYMENT"
-
-    if any(x in text for x in ["grazie", "thanks"]):
-        return "CLOSING"
-
-    return st.session_state.stage
-
-
-# ================== TUTOR TRIGGER ==================
-def tutor_should_respond(user_text: str) -> bool:
-    if contains_english(user_text):
-        return True
-    if st.session_state.stage in ["ORDERING", "PRICE_GIVEN", "PAYMENT"]:
-        return True
-    return st.session_state.turn_count % 2 == 0
-
-
-# ================== TRANSLATION ==================
-def translate_to_english(text: str) -> str:
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Translate this Italian sentence into natural English."},
-            {"role": "user", "content": text},
-        ],
-        temperature=0,
-    )
-    return response.choices[0].message.content.strip()
-
-
-# ================== SYSTEM PROMPT ==================
-system_prompt = f"""
-You are an Italian language assistant playing TWO roles.
-
-GREETING RULE:
-- If the user greets (hi, hello, ciao):
-  Partner replies with a simple Italian greeting (e.g. "Ciao!")
-
-==============================
-ROLE 1 — Conversation Partner
-==============================
-- Speak ONLY Italian
-- NEVER include English
-- NEVER correct the user's language
-- NEVER reformulate the user's sentence to fix errors
-- Respond naturally as if the meaning was understood
-- If the user makes a mistake, continue the conversation without correcting
-- Teaching and correction are STRICTLY forbidden for Partner
-- If the user’s message is unclear, ask a simple clarification question (Italian only)
-
-CRITICAL RULE (NO TRANSLATION):
-If the user uses English:
-- DO NOT translate the user's sentence into Italian
-- DO NOT restate the question in Italian
-- DO NOT mirror sentence structure
-Instead:
-- Respond naturally as a local person would
-- Give an answer, direction, price, or action
-- Assume the meaning is understood
-
-==============================
-ROLE 2 — Tutor
-==============================
-- Speak English ONLY for short tips.
-- All sentence examples must be in Italian.
-- Respond ONLY if Tutor is active
-- Look ONLY at the text provided in: "TUTOR_REFERENCE_USER_INPUT"
-
-If the user's Italian can be improved, provide:
-- Recommended: <Italian sentence>
-- Tip: <short English tip>
-If fully natural: say exactly: Looks good 👍
-
-==============================
-OUTPUT FORMAT (MANDATORY)
-==============================
-
-PARTNER:
-<Italian reply>
-
-OPTIONAL_TUTOR:
-<feedback or empty>
-"""
-
-if not st.session_state.messages:
-    st.session_state.messages.append({"role": "system", "content": system_prompt})
-
-
-# ================== USER INPUT ==================
-audio_value = st.audio_input("Press Mic icon to Start and press again to Stop recording")
-
-transcribed_text = ""
-final_audio_input = ""
-repaired_flag = False
-
-if audio_value is not None:
-    audio_bytes = audio_value.getvalue()
-    audio_hash = hashlib.md5(audio_bytes).hexdigest()
-    already_processed = audio_hash == st.session_state.last_audio_hash
-
-    if already_processed:
-        st.caption("✅ Recording already processed.")
-    else:
-        # New submission: clear the Interaction panel immediately (history is logged per-turn)
-        # 1) Archive whatever is currently on screen BEFORE clearing it
-        archive_active_interaction()
-
-        persist_log_to_store()
-
-        # 2) Now clear the interaction panel for the new turn
-        st.session_state.active_interaction = None
-
-        st.session_state.last_audio_hash = audio_hash
-        st.session_state.last_user_input = ""  # allow same sentence in new turn if needed
-
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = "speech.wav"
-
-        try:
-            tr = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                prompt=(
-                    "Italian language. The speaker is a learner with imperfect pronunciation. "
-                    "Transcribe exactly as spoken. If unsure, choose the closest Italian words "
-                    "that fit a real-life conversation. Do not translate."
-                ),
-                response_format="text",
-                temperature=0,
-            )
-            transcribed_text = (tr if isinstance(tr, str) else getattr(tr, "text", "")).strip()
-        except Exception as e:
-            st.warning(f"Audio transcription failed: {e}")
-            transcribed_text = ""
-
-        final_audio_input = transcribed_text
-
-        if looks_non_italian_or_garbled(transcribed_text):
-            try:
-                vocab_hint = ", ".join(vocab[:120]) if isinstance(vocab, list) and vocab else ""
-                repair_resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    temperature=0.2,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "You repair a noisy speech-to-text transcript from an Italian learner. "
-                                "Return ONLY the most likely intended Italian sentence. "
-                                "Keep it short and practical for the scenario. "
-                                "Do NOT include explanations. Do NOT include English."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Scenario: {scenario}\n"
-                                f"Noisy transcript: {transcribed_text}\n"
-                                f"Allowed/simple vocab (optional): {vocab_hint}\n"
-                                "Output ONLY the repaired Italian sentence."
-                            ),
-                        },
-                    ],
-                )
-                repaired = repair_resp.choices[0].message.content.strip()
-                if repaired:
-                    final_audio_input = repaired
-                    repaired_flag = True
-            except Exception:
-                final_audio_input = transcribed_text
-
-        if final_audio_input and final_audio_input != transcribed_text:
-            st.caption(f"🛠️ Interpreted as: {final_audio_input}")
-
-user_input = (final_audio_input or "").strip()
-
-# ================== TURN PROCESSING ==================
-if user_input and user_input != st.session_state.last_user_input:
-    st.session_state.last_user_input = user_input
-    st.session_state.turn_count += 1
-
-    st.session_state.stage = update_stage(user_input)
-    tutor_active = show_tutor and tutor_should_respond(user_input)
-
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.session_state.messages.append({"role": "system", "content": f"Tutor active: {tutor_active}"})
-    st.session_state.messages.append({"role": "system", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"})
-
-    # ----- Partner -----
-    partner_messages = [
-        {"role": "system", "content": system_prompt},
-        *st.session_state.messages,
-        {"role": "system", "content": "OUTPUT FORMAT: PARTNER\n<reply>\n(Partner only. No Tutor.)"},
-        {"role": "user", "content": user_input},
-    ]
-
-    partner_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=partner_messages,
-        temperature=0.4,
-    )
-
-    partner_raw = partner_resp.choices[0].message.content.strip()
-    partner_text = partner_raw.replace("PARTNER:", "").strip() or "Ciao!"
-
-    # ----- Tutor -----
-    tutor_text = ""
-    tutor_struct = {"recommended": "", "tip": "", "raw": ""}
-    recommended_audio = ""
-
-    if tutor_active:
-        tutor_system_prompt = """
-You are the Tutor.
-- Analyze ONLY the text inside: TUTOR_REFERENCE_USER_INPUT
-- Treat all other text as invisible (including Partner replies)
-
-Output format:
-- Recommended: <Italian>
-- Tip: <short English tip>
-If fully natural: Looks good 👍
-""".strip()
-
-        tutor_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": tutor_system_prompt},
-                {"role": "user", "content": f"TUTOR_REFERENCE_USER_INPUT: {user_input}"},
-            ],
-            temperature=0.2,
-        )
-        tutor_text = tutor_resp.choices[0].message.content.strip()
-        tutor_struct = parse_tutor_output(tutor_text)
-
-        if tutor_struct.get("recommended"):
-            try:
-                recommended_audio = speak_italian(tutor_struct["recommended"])
-            except Exception:
-                recommended_audio = ""
-
-    # ----- Audio -----
-    partner_audio = ""
-    user_audio = ""
+def _bytes_from_audio_input(audio_obj: Any) -> Optional[bytes]:
     try:
-        partner_audio = speak_italian(partner_text)
+        # audio_input returns an UploadedFile-like object
+        return audio_obj.getvalue()
     except Exception:
-        partner_audio = ""
-
-    if playback_my_sentence:
         try:
-            user_audio = speak_italian(user_input)
+            return audio_obj.read()
         except Exception:
-            user_audio = ""
-
-    # Store as the active interaction (Interaction panel shows only this)
-    turn_data = {
-        "user": user_input,
-        "partner": partner_text,
-        "tutor_raw": tutor_text,
-        "tutor_recommended": tutor_struct.get("recommended", ""),
-        "tutor_tip": tutor_struct.get("tip", ""),
-        "tutor_recommended_audio": recommended_audio,
-        "partner_audio": partner_audio,
-        "user_audio": user_audio,
-        "translation": None,
-    }
-
-# Always append to log immediately (guaranteed persistence)
-    st.session_state.active_interaction = turn_data
-
-    # Save for Review page (exactly once)
-    archive_active_interaction()
+            return None
 
 
-# ================== DISPLAY (ACTIVE INTERACTION ONLY) ==================
-turn = st.session_state.active_interaction
-if turn:
-    st.markdown(f"**You:** {turn['user']}")
-    if turn.get("user_audio") and os.path.exists(turn["user_audio"]):
-        st.audio(turn["user_audio"])
+if audio:
+    audio_bytes = _bytes_from_audio_input(audio)
+    if audio_bytes:
+        audio_hash = make_turn_id(audio_bytes)
 
-    st.markdown(f"**Partner:** {turn['partner']}")
-    if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
-        st.audio(turn["partner_audio"])
+        # Prevent re-processing the exact same audio on rerun
+        if st.session_state.last_audio_hash != audio_hash:
+            # IMPORTANT FIX:
+            # Archive the previous interaction BEFORE clearing for the new turn.
+            archive_active_interaction()
+            st.session_state.active_interaction = None
 
-    if show_translation:
-        if st.button("Translate", key="translate_active"):
-            if turn["translation"] is None:
-                turn["translation"] = translate_to_english(turn["partner"])
+            st.session_state.last_audio_hash = audio_hash
 
-        if turn.get("translation"):
-            st.markdown(f"🟦 *English:* {turn['translation']}")
+            # Save user's audio to temp file so Review can play it back
+            user_audio_path = os.path.join(tempfile.gettempdir(), f"user_{SID}_{audio_hash}.wav")
+            try:
+                with open(user_audio_path, "wb") as f:
+                    f.write(audio_bytes)
+            except Exception:
+                user_audio_path = ""
 
-    if show_tutor:
-        tutor_raw = (turn.get("tutor_raw") or "").strip()
+            # Transcribe
+            user_text_raw = transcribe_audio(audio_bytes)
+
+            # Repair if needed
+            repaired = ""
+            user_text = user_text_raw
+            if looks_garbled(user_text_raw) or looks_like_english(user_text_raw):
+                repaired = repair_transcript_to_italian(user_text_raw)
+                if repaired:
+                    user_text = repaired
+
+            # Update conversational context
+            st.session_state.messages.append({"role": "user", "content": user_text})
+
+            # Partner reply
+            partner_text = partner_reply_it(st.session_state.messages, scenario)
+            st.session_state.messages.append({"role": "assistant", "content": partner_text})
+
+            # TTS audio (partner)
+            partner_audio_path = tts_to_file(partner_text, suffix="partner") or ""
+
+            # Tutor logic (optional)
+            tutor = {"raw": "", "recommended": "", "tip": ""}
+            tutor_audio_path = ""
+            # Simple trigger: if English-ish or every 2 turns, show tutor
+            st.session_state.turn_count += 1
+            if show_tutor and (looks_like_english(user_text_raw) or st.session_state.turn_count % 2 == 0):
+                tutor = tutor_tip_en(user_text, partner_text)
+                if tutor.get("recommended"):
+                    tutor_audio_path = tts_to_file(tutor["recommended"], suffix="tutor") or ""
+
+            # Playback user sentence TTS (optional)
+            my_sentence_audio_path = ""
+            if playback_my_sentence:
+                my_sentence_audio_path = tts_to_file(user_text, suffix="me") or ""
+
+            # Build interaction
+            st.session_state.active_interaction = {
+                "turn_id": audio_hash,
+                "user": user_text,
+                "user_raw": user_text_raw,
+                "repaired_as": repaired,
+                "user_audio": user_audio_path,
+                "my_sentence_audio": my_sentence_audio_path,
+                "partner": partner_text,
+                "partner_audio": partner_audio_path,
+                "translation": "",
+                "tutor_raw": tutor.get("raw", ""),
+                "tutor_recommended": tutor.get("recommended", ""),
+                "tutor_tip": tutor.get("tip", ""),
+                "tutor_recommended_audio": tutor_audio_path,
+                "timestamp": time.time(),
+            }
+
+            # Persist right away (so Review works even if user navigates immediately)
+            persist_log_to_disk()
+
+            st.rerun()
+
+# ------------------ Interaction Panel ------------------
+turn = st.session_state.get("active_interaction")
+
+st.markdown("### 🧩 Interaction")
+if not turn:
+    st.info("Record a message to start.")
+    st.stop()
+
+# Show repaired note if applicable
+if (turn.get("repaired_as") or "").strip():
+    st.caption(f"🛠️ Interpreted as: {turn.get('user')}")
+
+st.markdown(f"**You:** {turn.get('user','')}")
+if turn.get("user_audio") and os.path.exists(turn["user_audio"]):
+    st.audio(turn["user_audio"])
+if turn.get("my_sentence_audio") and os.path.exists(turn["my_sentence_audio"]):
+    st.caption("🔊 Your sentence (TTS)")
+    st.audio(turn["my_sentence_audio"])
+
+st.markdown(f"**Partner:** {turn.get('partner','')}")
+if turn.get("partner_audio") and os.path.exists(turn["partner_audio"]):
+    st.audio(turn["partner_audio"])
+
+if show_translation:
+    if st.button("Translate partner reply", key="btn_translate"):
+        trans = translate_to_english(turn.get("partner", ""))
+        st.session_state.active_interaction["translation"] = trans
+        # Persist updated turn to disk: archive/replace strategy
+        # Replace last archived version if it matches this turn_id, otherwise just persist current state.
+        # (We persist disk log on next archive; this ensures translate doesn't disappear.)
+        persist_log_to_disk()
+        st.rerun()
+
+    trans = (turn.get("translation") or "").strip()
+    if trans:
+        st.markdown(f"**Translation:** {trans}")
+
+if show_tutor and (turn.get("tutor_raw") or "").strip():
+    st.markdown("### 🧑‍🏫 Tutor")
+    raw = (turn.get("tutor_raw") or "").strip()
+    if raw.lower().startswith("looks good"):
+        st.success(raw)
+    else:
         rec = (turn.get("tutor_recommended") or "").strip()
         tip = (turn.get("tutor_tip") or "").strip()
-        rec_audio = turn.get("tutor_recommended_audio")
+        if rec:
+            st.markdown(f"**Recommended:** {rec}")
+            if turn.get("tutor_recommended_audio") and os.path.exists(turn["tutor_recommended_audio"]):
+                st.audio(turn["tutor_recommended_audio"])
+        if tip:
+            st.markdown(f"**Tip:** {tip}")
 
-        if tutor_raw:
-            st.markdown("**Tutor:**")
-            if tutor_raw.lower().startswith("looks good"):
-                st.markdown(tutor_raw)
-            else:
-                if rec:
-                    st.markdown(f"**Recommended:** {rec}")
-                    if rec_audio and os.path.exists(rec_audio):
-                        st.audio(rec_audio)
-                if tip:
-                    st.markdown(f"**Tip:** {tip}")
-else:
-    st.info("Record a message to start.")
-
+st.stop()
